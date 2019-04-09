@@ -9,14 +9,11 @@
   "author": "David House",
   "license": "MIT",
   "dependencies": {
-    "body-parser": "^1.18.3",
+    "async-redis": "^1.1.7",
     "chalk": "^2.4.2",
     "clear": "^0.1.0",
-    "express": "^4.16.4",
     "figlet": "^1.2.1",
     "rc": "^1.2.8",
-    "redis": "^2.8.0",
-    "ws": "^6.0.0",
-    "express-ws": "^4.0.0"
+    "redis": "^2.8.0"
   }
 }
