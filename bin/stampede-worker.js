@@ -38,8 +38,6 @@ function createRedisClient() {
 
 async function waitForJob() {
   console.log(chalk.yellow('Waiting on jobs on ' + conf.jobQueue + ' queue...'))
-  // TODO: change to BRPOPLPUSH once we change what is in the job
-  // queue.
   const job = await client.brpoplpush(conf.jobQueue, conf.workerTitle, 0)
   await processJob(job)
 }
@@ -95,9 +93,7 @@ async function processJob(jobIdentifier) {
   })
 
   currentQueue.on('drain', function() {
-    // TODO: this isn't working. I think it has a problem with JSON in the list
-    //  await client.lrem('jobWorker', 0, JSON.stringify(job))
-    jobStatus.jobDone(client, jobIdentifier, currentJobStatus, function() {
+    jobStatus.jobDone(client, jobIdentifier, currentJobStatus, conf.workerTitle, function() {
       currentJobStatus = 'done'
       waitForJob()
     })
