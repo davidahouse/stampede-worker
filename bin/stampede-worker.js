@@ -7,6 +7,7 @@ const fs = require('fs')
 const Queue = require('better-queue')
 const { exec } = require('child_process')
 
+const jobStatus = require('../lib/jobStatus')
 const conf = require('rc')('stampede', {
   // defaults
   redisHost: 'localhost',
@@ -18,6 +19,7 @@ const conf = require('rc')('stampede', {
 
 let client = createRedisClient()
 let currentQueue
+let currentJobStatus = ''
 
 client.on('error', function(err) {
   console.log('redis connect error: ' + err)
@@ -42,63 +44,51 @@ async function waitForJob() {
   await processJob(job)
 }
 
-function executeTask(cmd, cb) {
+async function executeTask(cmd, cb, jobIdentifier, stage, step) {
+  console.log('executeTask...')
+  jobStatus.jobStartStep(client, jobIdentifier, stage, step)
   exec(cmd, (error, stdout, stderr) => {
+    
     if (error) {
       console.error(`exec error: ${error}`)
-      cb()
+      currentJobStatus = 'failed'
+      jobStatus.jobEndStep(client, jobIdentifier, stage, step, 'failed', cb)
       return
     }
     console.log(`stdout: ${stdout}`)
     console.log(`stderr: ${stderr}`)
-    cb()
+    jobStatus.jobEndStep(client, jobIdentifier, stage, step, 'success', cb)
   });
 }
 
 async function startStage(stage, jobIdentifier, cb) {
-  const rawJob = await client.get(jobIdentifier)
-  const job = JSON.parse(rawJob)
-  job.status.currentStage = stage
-  let stageDetails = job.status.stages
-  if (stageDetails == null) {
-    stageDetails = [{stage: stage, startTime: new Date()}]
-  } else {
-    stageDetails.push({stage: stage, startTime: new Date()})
-  }
-  job.status.stages = stageDetails
-  await client.set(jobIdentifier, JSON.stringify(job))
+  console.log('startStage ' + stage + '...')
+  await jobStatus.jobStartStage(client, jobIdentifier, stage)
+  cb()
 }
 
 async function endStage(stage, jobIdentifier, cb) {
-  const rawJob = await client.get(jobIdentifier)
-  const job = JSON.parse(rawJob)
-  job.status.currentStage = ''
-  const stageIndex = job.status.stages.findIndex(stage => stage.title === stage)
-  if (stageIndex != -1) {
-    job.status.stages[stageIndex].endTime = new Date()    
-  }
-  await client.set(jobIdentifier, JSON.stringify(job))  
+  console.log('endStage ' + stage + '...')
+  await jobStatus.jobEndStage(client, jobIdentifier, stage)
+  cb()
 }
 
 async function processJob(jobIdentifier) {
-
   console.log(jobIdentifier)
-  const rawJob = await client.get(jobIdentifier)
-  const job = JSON.parse(rawJob)
-  job.status.status = 'inProgress'
-  job.status.worker = conf.workerTitle
-  job.status.startTime = new Date()
-  await client.set(jobIdentifier, JSON.stringify(job))
-
+  jobStatus.jobInProgress(client, jobIdentifier, conf.workerTitle)
+  currentJobStatus = 'inProgress'
   currentQueue = new Queue(function(task, cb) {
     console.log(JSON.stringify(task))
-
-    if (task.task === 'execute') {
-      executeTask(task.command, cb)
-    } else if (task.task == 'startStage') {
-      startStage(task.stage, jobIdentifier, cb)
-    } else if (task.task == 'endStage') {
-      endStage(task.stage, jobIdentifier, cb)
+    if (currentJobStatus != 'failed') {
+      if (task.task === 'execute') {
+        executeTask(task.command, cb, jobIdentifier, task.stage, task.step)
+      } else if (task.task == 'startStage') {
+        startStage(task.stage, jobIdentifier, cb)
+      } else if (task.task == 'endStage') {
+        endStage(task.stage, jobIdentifier, cb)
+      } else {
+        cb()
+      }
     } else {
       cb()
     }
@@ -107,17 +97,13 @@ async function processJob(jobIdentifier) {
   currentQueue.on('drain', function() {
     // TODO: this isn't working. I think it has a problem with JSON in the list
     //  await client.lrem('jobWorker', 0, JSON.stringify(job))
-    job.status.status = 'done'
-    job.status.doneTime = new Date()
-    client.set(jobIdentifier, JSON.stringify(job))
-
-    waitForJob()
+    jobStatus.jobDone(client, jobIdentifier, currentJobStatus, function() {
+      currentJobStatus = 'done'
+      waitForJob()
+    })
   })
 
-  if (job.details.onStart != null) {
-    currentQueue.push({task: 'execute', command: job.details.onStart})
-  }
-
+  const job = await jobStatus.jobDetails(client, jobIdentifier)
   job.details.stages.forEach((stage) => {
     currentQueue.push({task: 'startStage', stage: stage.title})
     if (stage.onStart != null) {
