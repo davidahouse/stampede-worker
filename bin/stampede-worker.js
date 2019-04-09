@@ -12,6 +12,8 @@ const conf = require('rc')('stampede', {
   redisHost: 'localhost',
   redisPort: 6379,
   redisPassword: null,
+  jobQueue: 'jobDefaultQueue',
+  workerTitle: 'stampede-worker'
 })
 
 let client = createRedisClient()
@@ -33,11 +35,11 @@ function createRedisClient() {
 }
 
 async function waitForJob() {
-  console.log(chalk.yellow('Waiting on jobs...'))
+  console.log(chalk.yellow('Waiting on jobs on ' + conf.jobQueue + ' queue...'))
   // TODO: change to BRPOPLPUSH once we change what is in the job
   // queue.
-  const job = await client.brpop('jobRequests', 0)
-  await processJob(JSON.parse(job[1]))
+  const job = await client.brpoplpush(conf.jobQueue, conf.workerTitle, 0)
+  await processJob(job)
 }
 
 function executeTask(cmd, cb) {
@@ -53,15 +55,50 @@ function executeTask(cmd, cb) {
   });
 }
 
-async function processJob(job) {
+async function startStage(stage, jobIdentifier, cb) {
+  const rawJob = await client.get(jobIdentifier)
+  const job = JSON.parse(rawJob)
+  job.status.currentStage = stage
+  let stageDetails = job.status.stages
+  if (stageDetails == null) {
+    stageDetails = [{stage: stage, startTime: new Date()}]
+  } else {
+    stageDetails.push({stage: stage, startTime: new Date()})
+  }
+  job.status.stages = stageDetails
+  await client.set(jobIdentifier, JSON.stringify(job))
+}
 
-  console.log(JSON.stringify(job))
+async function endStage(stage, jobIdentifier, cb) {
+  const rawJob = await client.get(jobIdentifier)
+  const job = JSON.parse(rawJob)
+  job.status.currentStage = ''
+  const stageIndex = job.status.stages.findIndex(stage => stage.title === stage)
+  if (stageIndex != -1) {
+    job.status.stages[stageIndex].endTime = new Date()    
+  }
+  await client.set(jobIdentifier, JSON.stringify(job))  
+}
+
+async function processJob(jobIdentifier) {
+
+  console.log(jobIdentifier)
+  const rawJob = await client.get(jobIdentifier)
+  const job = JSON.parse(rawJob)
+  job.status.status = 'inProgress'
+  job.status.worker = conf.workerTitle
+  job.status.startTime = new Date()
+  await client.set(jobIdentifier, JSON.stringify(job))
 
   currentQueue = new Queue(function(task, cb) {
     console.log(JSON.stringify(task))
 
     if (task.task === 'execute') {
       executeTask(task.command, cb)
+    } else if (task.task == 'startStage') {
+      startStage(task.stage, jobIdentifier, cb)
+    } else if (task.task == 'endStage') {
+      endStage(task.stage, jobIdentifier, cb)
     } else {
       cb()
     }
@@ -70,24 +107,28 @@ async function processJob(job) {
   currentQueue.on('drain', function() {
     // TODO: this isn't working. I think it has a problem with JSON in the list
     //  await client.lrem('jobWorker', 0, JSON.stringify(job))
+    job.status.status = 'done'
+    job.status.doneTime = new Date()
+    client.set(jobIdentifier, JSON.stringify(job))
+
     waitForJob()
   })
 
-  if (job.onStart != null) {
-    currentQueue.push({task: 'execute', command: job.onStart})
+  if (job.details.onStart != null) {
+    currentQueue.push({task: 'execute', command: job.details.onStart})
   }
 
-  job.stages.forEach((stage) => {
-    currentQueue.push({task: 'startStage'})
+  job.details.stages.forEach((stage) => {
+    currentQueue.push({task: 'startStage', stage: stage.title})
     if (stage.onStart != null) {
       currentQueue.push({task: 'execute', command: stage.onStart})
     }
     if (stage.steps != null) [
       stage.steps.forEach((step) => {
-        currentQueue.push({task: 'execute', command: step.command})
+        currentQueue.push({task: 'execute', command: step.command, stage: stage.title, step: step.title})
       })
     ]
-    currentQueue.push({task: 'endStage'})
+    currentQueue.push({task: 'endStage', stage: stage.title})
   })
 }
 
