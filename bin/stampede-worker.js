@@ -29,9 +29,26 @@ function createRedisClient() {
   }
 }
 
+async function waitForJob() {
+  // TODO: change to BRPOPLPUSH once we change what is in the job
+  // queue.
+  const job = await client.brpop('jobRequests', 0)
+  console.log(JSON.stringify(job))
+  await processJob(job)
+}
+
+async function processJob(job) {
+
+  // TODO: this isn't working. I think it has a problem with JSON in the list
+  //  await client.lrem('jobWorker', 0, JSON.stringify(job))
+  waitForJob()
+}
+
 clear()
 console.log(chalk.red(figlet.textSync('stampede worker', {horizontalLayout: 'full'})))
 console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
 
 console.log(chalk.yellow('Waiting on jobs...'))
+
+waitForJob()
