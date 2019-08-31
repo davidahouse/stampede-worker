@@ -4,7 +4,6 @@ const clear = require('clear')
 const figlet = require('figlet')
 const asyncRedis = require("async-redis")
 const fs = require('fs')
-const Queue = require('better-queue')
 const { exec } = require('child_process')
 
 const jobStatus = require('../lib/jobStatus')
@@ -13,14 +12,12 @@ const conf = require('rc')('stampede', {
   redisHost: 'localhost',
   redisPort: 6379,
   redisPassword: null,
-  jobQueue: 'jobDefaultQueue',
-  workerTitle: 'stampede-worker'
+  taskQueue: 'jobDefaultQueue',
+  taskCommand: null,
+  workerTitle: 'stampede-worker',
 })
 
 let client = createRedisClient()
-let currentQueue
-let currentJobStatus = ''
-
 client.on('error', function(err) {
   console.log('redis connect error: ' + err)
 })
@@ -37,9 +34,27 @@ function createRedisClient() {
 }
 
 async function waitForJob() {
-  console.log(chalk.yellow('Waiting on jobs on ' + conf.jobQueue + ' queue...'))
-  const job = await client.brpoplpush(conf.jobQueue, conf.workerTitle, 0)
-  await processJob(job)
+  console.log(chalk.yellow('Waiting on jobs on ' + conf.taskQueue + ' queue...'))
+  const task = await client.brpoplpush('stampede-' + conf.taskQueue, conf.workerTitle, 0)
+  console.dir(task)
+  await processTask(task)
+}
+
+async function processTask(task) {
+  // TODO: Eventually we need to do some things:
+  // Local git checkout perhaps
+  // Change to working directory
+  // Converting config to environment variables
+
+  exec(conf.taskCommand, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`exec error: ${error}`)
+      // TODO: figure out the error reason
+      return
+    }
+    console.log(`stdout: ${stdout}`)
+    console.log(`stderr: ${stderr}`)
+  })
 }
 
 async function executeTask(cmd, cb, jobIdentifier, stage, step) {
