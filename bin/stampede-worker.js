@@ -4,6 +4,7 @@ const clear = require('clear')
 const figlet = require('figlet')
 const asyncRedis = require("async-redis")
 const fs = require('fs')
+const { spawn } = require('child_process')
 const { exec } = require('child_process')
 const LynnRequest = require('lynn-request')
 
@@ -14,6 +15,7 @@ const conf = require('rc')('stampede', {
   redisPassword: null,
   taskQueue: 'jobDefaultQueue',
   taskCommand: null,
+  taskArguments: '',
   workerTitle: 'stampede-worker',
   workspaceRoot: null,
 })
@@ -89,20 +91,18 @@ async function executeTask(workingDirectory, environment) {
     const options = {
       cwd: workingDirectory,
       env: environment,
+      encoding: 'utf8',
+      stdio: 'inherit',
+      shell: '/bin/zsh'
     }
 
-    exec(conf.taskCommand, options, (error, stdout, stderr) => {
-      if (error) {
-        console.log(chalk.green(`stdout: ${stdout}`))
-        console.log(chalk.red(`stderr: ${stderr}`))
-        console.error(`exec error: ${error}`)
-          // TODO: figure out the error reason
-        resolve({conclusion: 'failure', title: '', summary: '```\n' + error + '\n```', text: ''})
-        return
+    const spawned = spawn(conf.taskCommand, options)
+    spawned.on('close', (code) => {
+      if (code != 0) {
+        resolve({conclusion: 'failure', title: 'Task results', summary: 'Task failed', text: ''})
+      } else {
+        resolve({conclusion: 'success', title: 'Task results', summary: 'Task was successfull', text: ''})
       }
-      console.log(chalk.green(`stdout: ${stdout}`))
-      console.log(chalk.red(`stderr: ${stderr}`))
-      resolve({conclusion: 'success', title: '', summary: '', text: ''})
     })
   })
 }
@@ -142,7 +142,11 @@ async function prepareWorkingDirectory(task) {
  * @return {object} the config values
  */
 function collectEnvironment(task) {
-  return task.task.config
+  var environment = {}
+  Object.keys(task.task.config).forEach(function(key) {
+    environment[key.toUpperCase()] = task.task.config[key]
+  })
+  return environment
 }
 
 /**
@@ -263,5 +267,5 @@ clear()
 console.log(chalk.red(figlet.textSync('stampede worker', {horizontalLayout: 'full'})))
 console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
-
+console.log(process.env.PATH)
 waitForJob()
