@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 .DS_Store
 .stampederc
+.*rc
 
 # Runtime data
 pids
