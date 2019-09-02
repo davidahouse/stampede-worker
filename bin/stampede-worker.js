@@ -60,7 +60,6 @@ async function handleTask(task) {
 
   // Setup our environment variables
   const environment = collectEnvironment(task)
-  console.dir(environment)
 
   // Create the working directory and prepare it
   const workingDirectory = await prepareWorkingDirectory(task)
@@ -86,16 +85,19 @@ async function handleTask(task) {
  */
 async function executeTask(workingDirectory, environment) {
   return new Promise(resolve => {
+    console.log('--- Executing: ' + conf.taskCommand)
     const options = {
       cwd: workingDirectory,
-      env: environment
+      env: environment,
     }
 
     exec(conf.taskCommand, options, (error, stdout, stderr) => {
       if (error) {
+        console.log(chalk.green(`stdout: ${stdout}`))
+        console.log(chalk.red(`stderr: ${stderr}`))
         console.error(`exec error: ${error}`)
-        // TODO: figure out the error reason
-        resolve({conclusion: 'failure', title: '', summary: `${error}`, text: ''})
+          // TODO: figure out the error reason
+        resolve({conclusion: 'failure', title: '', summary: '```\n' + error + '\n```', text: ''})
         return
       }
       console.log(chalk.green(`stdout: ${stdout}`))
@@ -117,18 +119,18 @@ async function prepareWorkingDirectory(task) {
 
   // Do a clone into our working directory
   console.log(chalk.green('--- clone url'))
-  console.log(chalk.green(task.build.githubEvent.repository.clone_url))
-  await cloneRepo(task.build.githubEvent.repository.clone_url, dir)
+  console.log(chalk.green(task.clone_url))
+  await cloneRepo(task.clone_url, dir)
   await execute('ls -la', dir)
 
   // Now checkout our head sha
   console.log(chalk.green('--- head'))
-  console.dir(chalk.green(task.build.pullRequest.head))
-  await gitCheckout(task.build.pullRequest.head.sha, dir)
+  console.dir(task.pullRequest.head)
+  await gitCheckout(task.pullRequest.head.sha, dir)
   // And then merge the base sha
   console.log(chalk.green('--- base'))
-  console.dir(chalk.green(task.build.pullRequest.base))
-  await gitMerge(task.build.pullRequest.base.sha, dir)
+  console.dir(task.pullRequest.base)
+  await gitMerge(task.pullRequest.base.sha, dir)
 
   // Fail if we have merge conflicts
   return dir
@@ -149,6 +151,7 @@ function collectEnvironment(task) {
  */
 async function updateTask(task) {
   console.log(chalk.green('--- updating task with status: ' + task.status))
+  console.dir(task)
   await client.set('stampede-' + task.external_id, JSON.stringify(task))
   return new Promise(resolve => {
     const request = {
@@ -181,7 +184,7 @@ async function cloneRepo(cloneUrl, workingDirectory) {
   return new Promise(resolve => {
     exec('git clone ' + cloneUrl + ' ' + workingDirectory, (error, stdout, stderr) => {
       if (error) {
-        console.error(`exec error: ${error}`)
+        console.error(`cloneRepo error: ${error}`)
         // TODO: figure out the error reason
         resolve(false)
         return
@@ -202,7 +205,7 @@ async function gitCheckout(sha, workingDirectory) {
   return new Promise(resolve => {
     exec('git checkout -f ' + sha, {cwd: workingDirectory}, (error, stdout, stderr) => {
       if (error) {
-        console.error(`exec error: ${error}`)
+        console.error(`gitCheckout error: ${error}`)
         // TODO: figure out the error reason
         resolve(false)
         return
@@ -223,7 +226,7 @@ async function gitMerge(sha, workingDirectory) {
   return new Promise(resolve => {
     exec('git merge ' + sha, {cwd: workingDirectory}, (error, stdout, stderr) => {
       if (error) {
-        console.error(`exec error: ${error}`)
+        console.error(`gitMerge error: ${error}`)
         // TODO: figure out the error reason
         resolve(false)
         return
@@ -244,7 +247,7 @@ async function execute(cmd, workingDirectory) {
   return new Promise(resolve => {
     exec(cmd, {cwd: workingDirectory}, (error, stdout, stderr) => {
       if (error) {
-        console.error(`exec error: ${error}`)
+        console.error(`execute error: ${error}`)
         // TODO: figure out the error reason
         resolve(false)
         return
