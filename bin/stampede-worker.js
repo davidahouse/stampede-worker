@@ -18,6 +18,7 @@ const conf = require('rc')('stampede', {
   taskArguments: '',
   workerTitle: 'stampede-worker',
   workspaceRoot: null,
+  gitClone: 'true'
 })
 
 let client = createRedisClient()
@@ -87,21 +88,28 @@ async function handleTask(task) {
  */
 async function executeTask(workingDirectory, environment) {
   return new Promise(resolve => {
-    console.log('--- Executing: ' + conf.taskCommand)
+    console.log(chalk.green('--- Executing: ' + conf.taskCommand))
+
+    const stdoutlog = fs.openSync(workingDirectory + '/stdout.log', 'a')
+    const stderrlog = fs.openSync(workingDirectory + '/stderr.log', 'a')
+
     const options = {
       cwd: workingDirectory,
       env: environment,
       encoding: 'utf8',
-      stdio: 'inherit',
+      stdio: ['ignore', stdoutlog, stderrlog],
       shell: '/bin/zsh'
     }
 
     const spawned = spawn(conf.taskCommand, options)
     spawned.on('close', (code) => {
+      console.log(chalk.green('--- task finished: ' + code))
       if (code != 0) {
-        resolve({conclusion: 'failure', title: 'Task results', summary: 'Task failed', text: ''})
+        const errorLog = fs.readFileSync(workingDirectory + '/stderr.log', 'utf8')
+        resolve({conclusion: 'failure', title: 'Task results', summary: 'Task failed', text: errorLog})
       } else {
-        resolve({conclusion: 'success', title: 'Task results', summary: 'Task was successfull', text: ''})
+        const taskLog = fs.readFileSync(workingDirectory + '/task.log', 'utf8')
+        resolve({conclusion: 'success', title: 'Task results', summary: 'Task was successfull', text: taskLog})
       }
     })
   })
@@ -117,22 +125,23 @@ async function prepareWorkingDirectory(task) {
     fs.mkdirSync(dir)
   }
 
-  // Do a clone into our working directory
-  console.log(chalk.green('--- clone url'))
-  console.log(chalk.green(task.clone_url))
-  await cloneRepo(task.clone_url, dir)
-  await execute('ls -la', dir)
+  if (conf.gitClone == 'true') {
+    // Do a clone into our working directory
+    console.log(chalk.green('--- clone url'))
+    console.log(chalk.green(task.clone_url))
+    await cloneRepo(task.clone_url, dir)
+    await execute('ls -la', dir)
 
-  // Now checkout our head sha
-  console.log(chalk.green('--- head'))
-  console.dir(task.pullRequest.head)
-  await gitCheckout(task.pullRequest.head.sha, dir)
-  // And then merge the base sha
-  console.log(chalk.green('--- base'))
-  console.dir(task.pullRequest.base)
-  await gitMerge(task.pullRequest.base.sha, dir)
-
-  // Fail if we have merge conflicts
+    // Now checkout our head sha
+    console.log(chalk.green('--- head'))
+    console.dir(task.pullRequest.head)
+    await gitCheckout(task.pullRequest.head.sha, dir)
+    // And then merge the base sha
+    console.log(chalk.green('--- base'))
+    console.dir(task.pullRequest.base)
+    await gitMerge(task.pullRequest.base.sha, dir)
+    // Fail if we have merge conflicts
+}
   return dir
 }
 
@@ -142,7 +151,7 @@ async function prepareWorkingDirectory(task) {
  * @return {object} the config values
  */
 function collectEnvironment(task) {
-  var environment = {}
+  var environment = process.env
   Object.keys(task.task.config).forEach(function(key) {
     environment[key.toUpperCase()] = task.task.config[key]
   })
