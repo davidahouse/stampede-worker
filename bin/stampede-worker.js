@@ -4,27 +4,31 @@ const clear = require('clear')
 const figlet = require('figlet')
 const asyncRedis = require("async-redis")
 const fs = require('fs')
-const Queue = require('better-queue')
+const { spawn } = require('child_process')
 const { exec } = require('child_process')
+const LynnRequest = require('lynn-request')
 
-const jobStatus = require('../lib/jobStatus')
 const conf = require('rc')('stampede', {
   // defaults
   redisHost: 'localhost',
   redisPort: 6379,
   redisPassword: null,
-  jobQueue: 'jobDefaultQueue',
-  workerTitle: 'stampede-worker'
+  taskQueue: 'jobDefaultQueue',
+  taskCommand: null,
+  taskArguments: '',
+  workerTitle: 'stampede-worker',
+  workspaceRoot: null,
+  gitClone: 'true'
 })
 
 let client = createRedisClient()
-let currentQueue
-let currentJobStatus = ''
-
 client.on('error', function(err) {
   console.log('redis connect error: ' + err)
 })
 
+/**
+ * create the redis client
+ */
 function createRedisClient() {
   if (conf.redisPassword != null) {
     return asyncRedis.createClient({host: conf.redisHost, 
@@ -36,81 +40,235 @@ function createRedisClient() {
   }
 }
 
+/**
+ * wait for a job to arrive on our task queue
+ */
 async function waitForJob() {
-  console.log(chalk.yellow('Waiting on jobs on ' + conf.jobQueue + ' queue...'))
-  const job = await client.brpoplpush(conf.jobQueue, conf.workerTitle, 0)
-  await processJob(job)
+  console.log(chalk.yellow('Waiting on jobs on ' + conf.taskQueue + ' queue...'))
+  const taskString = await client.brpoplpush('stampede-' + conf.taskQueue, conf.workerTitle, 0)
+  if (taskString != null) {
+    const task = JSON.parse(taskString)
+    await handleTask(task)
+  }
+  setTimeout(waitForJob, 0.1)
 }
 
-async function executeTask(cmd, cb, jobIdentifier, stage, step) {
-  console.log('executeTask...')
-  jobStatus.jobStartStep(client, jobIdentifier, stage, step)
-  exec(cmd, (error, stdout, stderr) => {
-    
-    if (error) {
-      console.error(`exec error: ${error}`)
-      currentJobStatus = 'failed'
-      jobStatus.jobEndStep(client, jobIdentifier, stage, step, 'failed', cb)
-      return
+/**
+ * Handle an incoming task
+ * @param {*} task 
+ */
+async function handleTask(task) {
+  task.status = 'in_progress'
+  await updateTask(task)
+
+  // Setup our environment variables
+  const environment = collectEnvironment(task)
+
+  // Create the working directory and prepare it
+  const workingDirectory = await prepareWorkingDirectory(task)
+
+  // Execute our task
+  const result = await executeTask(workingDirectory, environment)
+
+  // Now finalize our task status
+  task.status = 'completed'
+  task.conclusion = result.conclusion
+  task.output = {
+    title: result.title,
+    summary: result.summary,
+    text: result.text
+  }
+  await updateTask(task)
+}
+
+/**
+ * execute the task and capture any results
+ * @param {*} workingDirectory 
+ * @param {*} environment 
+ */
+async function executeTask(workingDirectory, environment) {
+  return new Promise(resolve => {
+    console.log(chalk.green('--- Executing: ' + conf.taskCommand))
+
+    const stdoutlog = fs.openSync(workingDirectory + '/stdout.log', 'a')
+    const stderrlog = fs.openSync(workingDirectory + '/stderr.log', 'a')
+
+    const options = {
+      cwd: workingDirectory,
+      env: environment,
+      encoding: 'utf8',
+      stdio: ['ignore', stdoutlog, stderrlog],
+      shell: '/bin/zsh'
     }
-    console.log(`stdout: ${stdout}`)
-    console.log(`stderr: ${stderr}`)
-    jobStatus.jobEndStep(client, jobIdentifier, stage, step, 'success', cb)
-  });
-}
 
-async function startStage(stage, jobIdentifier, cb) {
-  console.log('startStage ' + stage + '...')
-  await jobStatus.jobStartStage(client, jobIdentifier, stage)
-  cb()
-}
-
-async function endStage(stage, jobIdentifier, cb) {
-  console.log('endStage ' + stage + '...')
-  await jobStatus.jobEndStage(client, jobIdentifier, stage)
-  cb()
-}
-
-async function processJob(jobIdentifier) {
-  console.log(jobIdentifier)
-  jobStatus.jobInProgress(client, jobIdentifier, conf.workerTitle)
-  currentJobStatus = 'inProgress'
-  currentQueue = new Queue(function(task, cb) {
-    console.log(JSON.stringify(task))
-    if (currentJobStatus != 'failed') {
-      if (task.task === 'execute') {
-        executeTask(task.command, cb, jobIdentifier, task.stage, task.step)
-      } else if (task.task == 'startStage') {
-        startStage(task.stage, jobIdentifier, cb)
-      } else if (task.task == 'endStage') {
-        endStage(task.stage, jobIdentifier, cb)
+    const spawned = spawn(conf.taskCommand, options)
+    spawned.on('close', (code) => {
+      console.log(chalk.green('--- task finished: ' + code))
+      if (code != 0) {
+        const errorLog = fs.readFileSync(workingDirectory + '/stderr.log', 'utf8')
+        resolve({conclusion: 'failure', title: 'Task results', summary: 'Task failed', text: errorLog})
       } else {
-        cb()
+        const taskLog = fs.readFileSync(workingDirectory + '/task.log', 'utf8')
+        resolve({conclusion: 'success', title: 'Task results', summary: 'Task was successfull', text: taskLog})
       }
-    } else {
-      cb()
-    }
-  })
-
-  currentQueue.on('drain', function() {
-    jobStatus.jobDone(client, jobIdentifier, currentJobStatus, conf.workerTitle, function() {
-      currentJobStatus = 'done'
-      waitForJob()
     })
   })
+}
 
-  const job = await jobStatus.jobDetails(client, jobIdentifier)
-  job.details.stages.forEach((stage) => {
-    currentQueue.push({task: 'startStage', stage: stage.title})
-    if (stage.onStart != null) {
-      currentQueue.push({task: 'execute', command: stage.onStart})
+/**
+ * prepare the working directory
+ * @param {*} task 
+ */
+async function prepareWorkingDirectory(task) {
+  const dir = conf.workspaceRoot + '/' + task.external_id
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir)
+  }
+
+  if (conf.gitClone == 'true') {
+    // Do a clone into our working directory
+    console.log(chalk.green('--- clone url'))
+    console.log(chalk.green(task.clone_url))
+    await cloneRepo(task.clone_url, dir)
+    await execute('ls -la', dir)
+
+    // Now checkout our head sha
+    console.log(chalk.green('--- head'))
+    console.dir(task.pullRequest.head)
+    await gitCheckout(task.pullRequest.head.sha, dir)
+    // And then merge the base sha
+    console.log(chalk.green('--- base'))
+    console.dir(task.pullRequest.base)
+    await gitMerge(task.pullRequest.base.sha, dir)
+    // Fail if we have merge conflicts
+}
+  return dir
+}
+
+/**
+ * Return any environment parameters from the task
+ * @param {*} task 
+ * @return {object} the config values
+ */
+function collectEnvironment(task) {
+  var environment = process.env
+  Object.keys(task.task.config).forEach(function(key) {
+    environment[key.toUpperCase()] = task.task.config[key]
+  })
+  return environment
+}
+
+/**
+ * Update the task in redis and in github
+ * @param {*} task 
+ */
+async function updateTask(task) {
+  console.log(chalk.green('--- updating task with status: ' + task.status))
+  console.dir(task)
+  await client.set('stampede-' + task.external_id, JSON.stringify(task))
+  return new Promise(resolve => {
+    const request = {
+      title: 'taskUpdate',
+      options: {
+        protocol: 'http:',
+        port: 7766,
+        method: 'POST',
+        host: 'localhost',
+        path: '/task',
+        body: task,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
     }
-    if (stage.steps != null) [
-      stage.steps.forEach((step) => {
-        currentQueue.push({task: 'execute', command: step.command, stage: stage.title, step: step.title})
-      })
-    ]
-    currentQueue.push({task: 'endStage', stage: stage.title})
+    const runner = new LynnRequest(request)
+    runner.execute(function(result) {
+      resolve()
+    })
+  })
+}
+
+/**
+ * Clone the repository to our working directory
+ * @param {*} cloneUrl 
+ * @param {*} workingDirectory 
+ */
+async function cloneRepo(cloneUrl, workingDirectory) {
+  return new Promise(resolve => {
+    exec('git clone ' + cloneUrl + ' ' + workingDirectory, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`cloneRepo error: ${error}`)
+        // TODO: figure out the error reason
+        resolve(false)
+        return
+      }
+      console.log(`stdout: ${stdout}`)
+      console.log(`stderr: ${stderr}`)
+      resolve(false)
+    })
+  })
+}
+
+/**
+ * Perform a git checkout of our branch
+ * @param {*} sha 
+ * @param {*} workingDirectory 
+ */
+async function gitCheckout(sha, workingDirectory) {
+  return new Promise(resolve => {
+    exec('git checkout -f ' + sha, {cwd: workingDirectory}, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`gitCheckout error: ${error}`)
+        // TODO: figure out the error reason
+        resolve(false)
+        return
+      }
+      console.log(`stdout: ${stdout}`)
+      console.log(`stderr: ${stderr}`)
+      resolve(false)
+    })
+  })
+}
+
+/**
+ * Now merge in the target branch
+ * @param {*} sha 
+ * @param {*} workingDirectory 
+ */
+async function gitMerge(sha, workingDirectory) {
+  return new Promise(resolve => {
+    exec('git merge ' + sha, {cwd: workingDirectory}, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`gitMerge error: ${error}`)
+        // TODO: figure out the error reason
+        resolve(false)
+        return
+      }
+      console.log(`stdout: ${stdout}`)
+      console.log(`stderr: ${stderr}`)
+      resolve(false)
+    })
+  })
+}
+
+/**
+ * Execute a command
+ * @param {*} cmd 
+ * @param {*} workingDirectory 
+ */
+async function execute(cmd, workingDirectory) {
+  return new Promise(resolve => {
+    exec(cmd, {cwd: workingDirectory}, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`execute error: ${error}`)
+        // TODO: figure out the error reason
+        resolve(false)
+        return
+      }
+      console.log(`stdout: ${stdout}`)
+      console.log(`stderr: ${stderr}`)
+      resolve(true)
+    })
   })
 }
 
@@ -118,5 +276,5 @@ clear()
 console.log(chalk.red(figlet.textSync('stampede worker', {horizontalLayout: 'full'})))
 console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
-
+console.log(process.env.PATH)
 waitForJob()
