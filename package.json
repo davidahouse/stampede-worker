@@ -4,7 +4,9 @@
   "description": "A centralized job queue system",
   "main": "bin/stampede-worker.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint --ignore-path .gitignore .",
+    "lint-fix": "eslint --fix --ignore-path .gitignore ."
   },
   "author": "David House",
   "license": "MIT",
@@ -17,5 +19,9 @@
     "lynn-request": "^0.4.5",
     "rc": "^1.2.8",
     "redis": "^2.8.0"
+  },
+  "devDependencies": {
+    "eslint": "^6.3.0",
+    "eslint-config-strongloop": "^2.1.0"
   }
 }
