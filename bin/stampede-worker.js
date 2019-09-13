@@ -19,7 +19,8 @@ const conf = require('rc')('stampede', {
   taskArguments: '',
   workerTitle: 'stampede-worker',
   workspaceRoot: null,
-  gitClone: 'true'
+  gitClone: 'true',
+  errorLogFile: 'stderr.log'
 })
 
 let client = createRedisClient()
@@ -79,6 +80,7 @@ async function handleTask(task) {
     summary: result.summary,
     text: result.text
   }
+  fs.writeFileSync(workingDirectory + '/worker.log', JSON.stringify(task, null, 2))
   await updateTask(task)
 }
 
@@ -106,7 +108,7 @@ async function executeTask(workingDirectory, environment) {
     spawned.on('close', (code) => {
       console.log(chalk.green('--- task finished: ' + code))
       if (code != 0) {
-        const errorLog = fs.readFileSync(workingDirectory + '/stderr.log', 'utf8')
+        const errorLog = fs.readFileSync(workingDirectory + '/' + conf.errorLogFile, 'utf8')
         resolve({conclusion: 'failure', title: 'Task results', summary: 'Task failed', text: errorLog})
       } else {
         const taskLog = fs.readFileSync(workingDirectory + '/task.log', 'utf8')
@@ -133,15 +135,26 @@ async function prepareWorkingDirectory(task) {
     await cloneRepo(task.clone_url, dir)
     await execute('ls -la', dir)
 
-    // Now checkout our head sha
-    console.log(chalk.green('--- head'))
-    console.dir(task.pullRequest.head)
-    await gitCheckout(task.pullRequest.head.sha, dir)
-    // And then merge the base sha
-    console.log(chalk.green('--- base'))
-    console.dir(task.pullRequest.base)
-    await gitMerge(task.pullRequest.base.sha, dir)
-    // Fail if we have merge conflicts
+    // Handle pull requests differently
+    if (task.pullRequest != null) {
+      // Now checkout our head sha
+      console.log(chalk.green('--- head'))
+      console.dir(task.pullRequest.head)
+      await gitCheckout(task.pullRequest.head.sha, dir)
+      // And then merge the base sha
+      console.log(chalk.green('--- base'))
+      console.dir(task.pullRequest.base)
+      await gitMerge(task.pullRequest.base.sha, dir)
+      // Fail if we have merge conflicts
+    } else if (task.branch != null) {
+      console.log(chalk.green('--- sha'))
+      console.dir(task.branch_sha)
+      await gitCheckout(task.branch_sha, dir)
+    } else if (task.release != null) {
+      console.log(chalk.green('--- sha'))
+      console.dir(task.release_sha)
+      await gitCheckout(task.release_sha, dir)
+    }
 }
   return dir
 }
@@ -153,9 +166,16 @@ async function prepareWorkingDirectory(task) {
  */
 function collectEnvironment(task) {
   var environment = process.env
-  Object.keys(task.task.config).forEach(function(key) {
-    environment[key.toUpperCase()] = task.task.config[key]
-  })
+  console.dir(task.config)
+  console.dir(task.config.config)
+  if (task.config != null && task.config.config != null) {
+    Object.keys(task.config.config).forEach(function(key) {
+      console.log('--- key: ' + key)
+      environment[key.toUpperCase()] = task.config.config[key]
+    })
+  } else {
+    console.log(chalk.red('--- no config found!'))
+  }
   return environment
 }
 
@@ -164,6 +184,10 @@ function collectEnvironment(task) {
  * @param {*} task 
  */
 async function updateTask(task) {
+  if (task.external_id == null) {
+    console.log(chalk.yellow('--- no external id so not updating task'))
+    return
+  }
   console.log(chalk.green('--- updating task with status: ' + task.status))
   console.dir(task)
   await client.set('stampede-' + task.external_id, JSON.stringify(task))
@@ -176,7 +200,9 @@ async function updateTask(task) {
         method: 'POST',
         host: 'localhost',
         path: '/task',
-        body: task,
+        body: {
+          external_id: task.external_id
+        },
         headers: {
           'Content-Type': 'application/json',
         },
