@@ -108,10 +108,16 @@ async function executeTask(workingDirectory, environment) {
     spawned.on('close', (code) => {
       console.log(chalk.green('--- task finished: ' + code))
       if (code != 0) {
-        const errorLog = fs.readFileSync(workingDirectory + '/' + conf.errorLogFile, 'utf8')
+        let errorLog = ''
+        if (fs.existsSync(workingDirectory + '/' + conf.errorLogFile)) {
+          errorLog = fs.readFileSync(workingDirectory + '/' + conf.errorLogFile, 'utf8')
+        }
         resolve({conclusion: 'failure', title: 'Task results', summary: 'Task failed', text: errorLog})
       } else {
-        const taskLog = fs.readFileSync(workingDirectory + '/task.log', 'utf8')
+        let taskLog = ''
+        if (fs.existsSync(workingDirectory + '/task.log')) {
+          taskLog = fs.readFileSync(workingDirectory + '/task.log', 'utf8')
+        }
         resolve({conclusion: 'success', title: 'Task results', summary: 'Task was successfull', text: taskLog})
       }
     })
@@ -173,6 +179,9 @@ function collectEnvironment(task) {
       console.log('--- key: ' + key)
       environment[key.toUpperCase()] = task.config.config[key]
     })
+    environment['PULLREQUESTNUMBER'] = task.pullRequest.number
+    environment['PULLREQUESTBRANCH'] = task.pullRequest.head.ref
+    environment['PULLREQUESTBASEBRANCH'] = task.pullRequest.base.ref
   } else {
     console.log(chalk.red('--- no config found!'))
   }
