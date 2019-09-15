@@ -11,12 +11,11 @@
   "author": "David House",
   "license": "MIT",
   "dependencies": {
-    "async-redis": "^1.1.7",
     "better-queue": "^3.8.10",
+    "bull": "^3.10.0",
     "chalk": "^2.4.2",
     "clear": "^0.1.0",
     "figlet": "^1.2.1",
-    "lynn-request": "^0.4.5",
     "rc": "^1.2.8",
     "redis": "^2.8.0"
   },
