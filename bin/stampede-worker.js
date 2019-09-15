@@ -1,65 +1,61 @@
 #!/usr/bin/env node
-"use strict";
+'use strict'
+
 const chalk = require('chalk')
 const clear = require('clear')
 const figlet = require('figlet')
-const asyncRedis = require("async-redis")
 const fs = require('fs')
 const { spawn } = require('child_process')
 const { exec } = require('child_process')
-const LynnRequest = require('lynn-request')
+const Queue = require('bull')
 
 const conf = require('rc')('stampede', {
   // defaults
   redisHost: 'localhost',
   redisPort: 6379,
   redisPassword: null,
-  taskQueue: 'jobDefaultQueue',
+  taskQueue: null,
   taskCommand: null,
   taskArguments: '',
   workerTitle: 'stampede-worker',
   workspaceRoot: null,
   gitClone: 'true',
-  errorLogFile: 'stderr.log'
+  errorLogFile: 'stderr.log',
+  responseQueue: 'stampede-response',
 })
 
-let client = createRedisClient()
-client.on('error', function(err) {
-  console.log('redis connect error: ' + err)
+const redisConfig = {
+  redis: {
+    port: conf.redisPort,
+    host: conf.redisHost,
+    password: conf.redisPassword,
+  },
+}
+
+clear()
+console.log(chalk.red(figlet.textSync('stampede worker', {horizontalLayout: 'full'})))
+console.log(chalk.red('Redis Host: ' + conf.redisHost))
+console.log(chalk.red('Redis Port: ' + conf.redisPort))
+console.log(process.env.PATH)
+
+const workerQueue = new Queue('stampede-' + conf.taskQueue, {
+  redisConfig,
 })
 
-/**
- * create the redis client
- */
-function createRedisClient() {
-  if (conf.redisPassword != null) {
-    return asyncRedis.createClient({host: conf.redisHost, 
-                               port: conf.redisPort, 
-                               password: conf.redisPassword})
-  } else {
-    return asyncRedis.createClient({host: conf.redisHost, 
-                               port: conf.redisPort})
-  }
-}
+workerQueue.process(function(task) {
+  return handleTask(task.data)
+})
 
-/**
- * wait for a job to arrive on our task queue
- */
-async function waitForJob() {
-  console.log(chalk.yellow('Waiting on jobs on ' + conf.taskQueue + ' queue...'))
-  const taskString = await client.brpoplpush('stampede-' + conf.taskQueue, conf.workerTitle, 0)
-  if (taskString != null) {
-    const task = JSON.parse(taskString)
-    await handleTask(task)
-  }
-  setTimeout(waitForJob, 0.1)
-}
+const responseQueue = new Queue(conf.responseQueue, {
+  redisConfig,
+})
 
 /**
  * Handle an incoming task
- * @param {*} task 
+ * @param {*} task
  */
 async function handleTask(task) {
+  console.dir(task)
   task.status = 'in_progress'
   await updateTask(task)
 
@@ -78,7 +74,7 @@ async function handleTask(task) {
   task.output = {
     title: result.title,
     summary: result.summary,
-    text: result.text
+    text: result.text,
   }
   fs.writeFileSync(workingDirectory + '/worker.log', JSON.stringify(task, null, 2))
   await updateTask(task)
@@ -86,8 +82,8 @@ async function handleTask(task) {
 
 /**
  * execute the task and capture any results
- * @param {*} workingDirectory 
- * @param {*} environment 
+ * @param {*} workingDirectory
+ * @param {*} environment
  */
 async function executeTask(workingDirectory, environment) {
   return new Promise(resolve => {
@@ -101,7 +97,7 @@ async function executeTask(workingDirectory, environment) {
       env: environment,
       encoding: 'utf8',
       stdio: ['ignore', stdoutlog, stderrlog],
-      shell: '/bin/zsh'
+      shell: '/bin/zsh',
     }
 
     const spawned = spawn(conf.taskCommand, options)
@@ -126,7 +122,7 @@ async function executeTask(workingDirectory, environment) {
 
 /**
  * prepare the working directory
- * @param {*} task 
+ * @param {*} task
  */
 async function prepareWorkingDirectory(task) {
   const dir = conf.workspaceRoot + '/' + task.external_id
@@ -161,13 +157,13 @@ async function prepareWorkingDirectory(task) {
       console.dir(task.release_sha)
       await gitCheckout(task.release_sha, dir)
     }
-}
+  }
   return dir
 }
 
 /**
  * Return any environment parameters from the task
- * @param {*} task 
+ * @param {*} task
  * @return {object} the config values
  */
 function collectEnvironment(task) {
@@ -190,7 +186,7 @@ function collectEnvironment(task) {
 
 /**
  * Update the task in redis and in github
- * @param {*} task 
+ * @param {*} task
  */
 async function updateTask(task) {
   if (task.external_id == null) {
@@ -199,35 +195,13 @@ async function updateTask(task) {
   }
   console.log(chalk.green('--- updating task with status: ' + task.status))
   console.dir(task)
-  await client.set('stampede-' + task.external_id, JSON.stringify(task))
-  return new Promise(resolve => {
-    const request = {
-      title: 'taskUpdate',
-      options: {
-        protocol: 'http:',
-        port: 7766,
-        method: 'POST',
-        host: 'localhost',
-        path: '/task',
-        body: {
-          external_id: task.external_id
-        },
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    }
-    const runner = new LynnRequest(request)
-    runner.execute(function(result) {
-      resolve()
-    })
-  })
+  responseQueue.add(task)
 }
 
 /**
  * Clone the repository to our working directory
- * @param {*} cloneUrl 
- * @param {*} workingDirectory 
+ * @param {*} cloneUrl
+ * @param {*} workingDirectory
  */
 async function cloneRepo(cloneUrl, workingDirectory) {
   return new Promise(resolve => {
@@ -247,8 +221,8 @@ async function cloneRepo(cloneUrl, workingDirectory) {
 
 /**
  * Perform a git checkout of our branch
- * @param {*} sha 
- * @param {*} workingDirectory 
+ * @param {*} sha
+ * @param {*} workingDirectory
  */
 async function gitCheckout(sha, workingDirectory) {
   return new Promise(resolve => {
@@ -268,8 +242,8 @@ async function gitCheckout(sha, workingDirectory) {
 
 /**
  * Now merge in the target branch
- * @param {*} sha 
- * @param {*} workingDirectory 
+ * @param {*} sha
+ * @param {*} workingDirectory
  */
 async function gitMerge(sha, workingDirectory) {
   return new Promise(resolve => {
@@ -289,8 +263,8 @@ async function gitMerge(sha, workingDirectory) {
 
 /**
  * Execute a command
- * @param {*} cmd 
- * @param {*} workingDirectory 
+ * @param {*} cmd
+ * @param {*} workingDirectory
  */
 async function execute(cmd, workingDirectory) {
   return new Promise(resolve => {
@@ -307,10 +281,3 @@ async function execute(cmd, workingDirectory) {
     })
   })
 }
-
-clear()
-console.log(chalk.red(figlet.textSync('stampede worker', {horizontalLayout: 'full'})))
-console.log(chalk.red('Redis Host: ' + conf.redisHost))
-console.log(chalk.red('Redis Port: ' + conf.redisPort))
-console.log(process.env.PATH)
-waitForJob()
