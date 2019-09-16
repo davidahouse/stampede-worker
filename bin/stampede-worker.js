@@ -22,6 +22,7 @@ const conf = require('rc')('stampede', {
   gitClone: 'true',
   errorLogFile: 'stderr.log',
   responseQueue: 'stampede-response',
+  environmentVariablePrefix: 'STAMP_',
 })
 
 const redisConfig = {
@@ -64,6 +65,7 @@ async function handleTask(task) {
 
   // Create the working directory and prepare it
   const workingDirectory = await prepareWorkingDirectory(task)
+  fs.writeFileSync(workingDirectory + '/environment.log', JSON.stringify(environment, null, 2))
 
   // Execute our task
   const result = await executeTask(workingDirectory, environment)
@@ -173,14 +175,35 @@ function collectEnvironment(task) {
   if (task.config != null && task.config.config != null) {
     Object.keys(task.config.config).forEach(function(key) {
       console.log('--- key: ' + key)
-      environment[key.toUpperCase()] = task.config.config[key]
+      environment[conf.environmentVariablePrefix + key.toUpperCase()] = task.config.config[key]
     })
-    environment['PULLREQUESTNUMBER'] = task.pullRequest.number
-    environment['PULLREQUESTBRANCH'] = task.pullRequest.head.ref
-    environment['PULLREQUESTBASEBRANCH'] = task.pullRequest.base.ref
+
+    // And some common things from all events
+    environment[conf.environmentVariablePrefix + 'OWNER'] = task.owner
+    environment[conf.environmentVariablePrefix + 'REPO'] = task.repository
+    environment[conf.environmentVariablePrefix + 'BUILDNUMBER'] = task.buildNumber
+    environment[conf.environmentVariablePrefix + 'TASKID'] = task.task.id
+    environment[conf.environmentVariablePrefix + 'BUILDID'] = task.buildID
+
+    // Now add in the event specific details, if they are available
+    if (task.pullRequest != null) {
+      environment[conf.environmentVariablePrefix + 'PULLREQUESTNUMBER'] = task.pullRequest.number
+      environment[conf.environmentVariablePrefix + 'PULLREQUESTBRANCH'] = task.pullRequest.head.ref
+      environment[conf.environmentVariablePrefix + 'PULLREQUESTBASEBRANCH'] = task.pullRequest.base.ref
+    }
+
+    if (task.branch != null) {
+      environment[conf.environmentVariablePrefix + 'BRANCH'] = task.branch
+    }
+
+    if (task.release != null) {
+      environment[conf.environmentVariablePrefix + 'RELEASE'] = task.release
+      environment[conf.environmentVariablePrefix + 'TAG'] = task.tag
+    }
   } else {
     console.log(chalk.red('--- no config found!'))
   }
+
   return environment
 }
 
