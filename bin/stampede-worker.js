@@ -22,7 +22,7 @@ const conf = require('rc')('stampede', {
   gitClone: 'true',
   errorLogFile: 'stderr.log',
   responseQueue: 'stampede-response',
-  environmentVariablePrefix: 'STAMP-',
+  environmentVariablePrefix: 'STAMP_',
 })
 
 const redisConfig = {
