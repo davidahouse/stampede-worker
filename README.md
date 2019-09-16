@@ -15,7 +15,7 @@ Put a .stampederc file in the path, or pass the path to the config file using th
 
 Config file is in the following format:
 
-<config param>=<config value>
+config param=config value
 
 The configuration parameters are:
 
@@ -44,7 +44,7 @@ The following environment variables are created and passed to the command line:
 
 And for any configuration set from the task, the format will be:
 
-- STAMP_<CONFIGPARAMNAME> = <VALUE>
+- STAMP_CONFIGPARAMNAME = VALUE
 
 And depending on if the task was created from a pull request, branch push or release creation, the following environment variables might also be available:
 
