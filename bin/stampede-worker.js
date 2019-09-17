@@ -16,8 +16,6 @@ const conf = require('rc')('stampede', {
   redisPassword: null,
   taskQueue: null,
   taskCommand: null,
-  taskArguments: '',
-  workerTitle: 'stampede-worker',
   workspaceRoot: null,
   gitClone: 'true',
   errorLogFile: 'stderr.log',
