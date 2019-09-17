@@ -37,17 +37,13 @@ console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
 console.log(process.env.PATH)
 
-const workerQueue = new Queue('stampede-' + conf.taskQueue, {
-  redisConfig,
-})
+const workerQueue = new Queue('stampede-' + conf.taskQueue, redisConfig)
 
 workerQueue.process(function(task) {
   return handleTask(task.data)
 })
 
-const responseQueue = new Queue(conf.responseQueue, {
-  redisConfig,
-})
+const responseQueue = new Queue(conf.responseQueue, redisConfig)
 
 /**
  * Handle an incoming task
