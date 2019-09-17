@@ -1,12 +1,15 @@
 {
   "name": "stampede-worker",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A centralized job queue system",
   "main": "bin/stampede-worker.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint --ignore-path .gitignore .",
     "lint-fix": "eslint --fix --ignore-path .gitignore ."
+  },
+  "bin": {
+    "stampede-worker": "bin/stampede-worker.js"
   },
   "author": "David House",
   "license": "MIT",
