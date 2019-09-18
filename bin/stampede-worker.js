@@ -2,7 +2,6 @@
 'use strict'
 
 const chalk = require('chalk')
-const clear = require('clear')
 const figlet = require('figlet')
 const fs = require('fs')
 const { spawn } = require('child_process')
@@ -41,8 +40,7 @@ const redisConfig = {
   },
 }
 
-clear()
-console.log(chalk.red(figlet.textSync('stampede worker', {horizontalLayout: 'full'})))
+console.log(chalk.red(figlet.textSync('stampede', {horizontalLayout: 'full'})))
 console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
 console.log(chalk.red('Task Queue: ' + conf.taskQueue))
