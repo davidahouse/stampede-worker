@@ -2,7 +2,6 @@
 'use strict'
 
 const chalk = require('chalk')
-const clear = require('clear')
 const figlet = require('figlet')
 const fs = require('fs')
 const { spawn } = require('child_process')
@@ -10,18 +9,27 @@ const { exec } = require('child_process')
 const Queue = require('bull')
 
 const conf = require('rc')('stampede', {
-  // defaults
+  // Queue configuration
   redisHost: 'localhost',
   redisPort: 6379,
   redisPassword: null,
   taskQueue: null,
+  responseQueue: 'stampede-response',
+  // Command configuration
   taskCommand: null,
   workspaceRoot: null,
-  gitClone: 'true',
-  errorLogFile: 'stderr.log',
-  responseQueue: 'stampede-response',
   environmentVariablePrefix: 'STAMP_',
   shell: '/bin/bash',
+  gitClone: 'true',
+  // Log file configuration
+  stdoutLogFile: 'stdout.log',
+  stderrLogFile: 'stderr.log',
+  environmentLogFile: 'environment.log',
+  taskDetailsLogFile: 'worker.log',
+  successSummaryFile: null,
+  successTextFile: null,
+  errorSummaryFile: null,
+  errorTextFile: 'stderr.log',
 })
 
 const redisConfig = {
@@ -32,11 +40,10 @@ const redisConfig = {
   },
 }
 
-clear()
-console.log(chalk.red(figlet.textSync('stampede worker', {horizontalLayout: 'full'})))
+console.log(chalk.red(figlet.textSync('stampede', {horizontalLayout: 'full'})))
 console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
-console.log(process.env.PATH)
+console.log(chalk.red('Task Queue: ' + conf.taskQueue))
 
 const workerQueue = new Queue('stampede-' + conf.taskQueue, redisConfig)
 
@@ -60,7 +67,9 @@ async function handleTask(task) {
 
   // Setup our environment variables
   const environment = collectEnvironment(task, workingDirectory)
-  fs.writeFileSync(workingDirectory + '/environment.log', JSON.stringify(environment, null, 2))
+  if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
+    fs.writeFileSync(workingDirectory + '/' + conf.environmentLogFile, JSON.stringify(environment, null, 2))
+  }
 
   // Execute our task
   const result = await executeTask(workingDirectory, environment)
@@ -73,7 +82,9 @@ async function handleTask(task) {
     summary: result.summary,
     text: result.text,
   }
-  fs.writeFileSync(workingDirectory + '/worker.log', JSON.stringify(task, null, 2))
+  if (conf.taskDetailsLogFile != null && conf.taskDetailsLogFile.length > 0) {
+    fs.writeFileSync(workingDirectory + '/' + conf.taskDetailsLogFile, JSON.stringify(task, null, 2))
+  }
   await updateTask(task)
 }
 
@@ -86,8 +97,8 @@ async function executeTask(workingDirectory, environment) {
   return new Promise(resolve => {
     console.log(chalk.green('--- Executing: ' + conf.taskCommand))
 
-    const stdoutlog = fs.openSync(workingDirectory + '/stdout.log', 'a')
-    const stderrlog = fs.openSync(workingDirectory + '/stderr.log', 'a')
+    const stdoutlog = fs.openSync(workingDirectory + '/' + conf.stdoutLogFile, 'a')
+    const stderrlog = fs.openSync(workingDirectory + '/' + conf.stderrLogFile, 'a')
 
     const options = {
       cwd: workingDirectory,
@@ -100,18 +111,16 @@ async function executeTask(workingDirectory, environment) {
     const spawned = spawn(conf.taskCommand, options)
     spawned.on('close', (code) => {
       console.log(chalk.green('--- task finished: ' + code))
-      if (code != 0) {
-        let errorLog = ''
-        if (fs.existsSync(workingDirectory + '/' + conf.errorLogFile)) {
-          errorLog = fs.readFileSync(workingDirectory + '/' + conf.errorLogFile, 'utf8')
-        }
-        resolve({conclusion: 'failure', title: 'Task results', summary: 'Task failed', text: errorLog})
+      if (code !== 0) {
+        const conclusion = prepareConclusion(workingDirectory, 'failure', 'Task results',
+          'Task Failed', conf.errorSummaryFile,
+          '', conf.errorTextFile)
+        resolve(conclusion)
       } else {
-        let taskLog = ''
-        if (fs.existsSync(workingDirectory + '/task.log')) {
-          taskLog = fs.readFileSync(workingDirectory + '/task.log', 'utf8')
-        }
-        resolve({conclusion: 'success', title: 'Task results', summary: 'Task was successfull', text: taskLog})
+        const conclusion = prepareConclusion(workingDirectory, 'success', 'Task results',
+          'Task was successful', conf.successSummaryFile,
+          '', conf.successTextFile)
+        resolve(conclusion)
       }
     })
   })
@@ -127,7 +136,7 @@ async function prepareWorkingDirectory(task) {
     fs.mkdirSync(dir)
   }
 
-  if (conf.gitClone == 'true') {
+  if (conf.gitClone === 'true') {
     // Do a clone into our working directory
     console.log(chalk.green('--- clone url'))
     console.log(chalk.green(task.clone_url))
@@ -299,4 +308,38 @@ async function execute(cmd, workingDirectory) {
       resolve(true)
     })
   })
+}
+
+/**
+ * prepareConclusion
+ * @param {*} workingDirectory
+ * @param {*} conclusion
+ * @param {*} title
+ * @param {*} defaultSummary
+ * @param {*} summaryFile
+ * @param {*} defaultText
+ * @param {*} textFile
+ * @return {*} The conclusion object to set in our task details
+ */
+async function prepareConclusion(workingDirectory, conclusion, title, defaultSummary, summaryFile,
+  defaultText, textFile) {
+
+  let summary = defaultSummary
+  if (summaryFile != null && summaryFile.length > 0) {
+    if (fs.existsSync(workingDirectory + '/' + summaryFile)) {
+      summary = fs.readFileSync(workingDirectory + '/' + summaryFile, 'utf8')
+    }
+  }
+
+  let text = defaultText
+  if (textFile != null && textFile.length > 0) {
+    if (fs.existsSync(workingDirectory + '/' + textFile)) {
+      text = fs.readFileSync(workingDirectory + '/' + textFile, 'utf8')
+    }
+  }
+
+  return {conclusion: conclusion,
+    title: title,
+    summary: summary,
+    text: text}
 }
