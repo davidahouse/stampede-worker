@@ -55,11 +55,11 @@ async function handleTask(task) {
   task.status = 'in_progress'
   await updateTask(task)
 
-  // Setup our environment variables
-  const environment = collectEnvironment(task)
-
   // Create the working directory and prepare it
   const workingDirectory = await prepareWorkingDirectory(task)
+
+  // Setup our environment variables
+  const environment = collectEnvironment(task, workingDirectory)
   fs.writeFileSync(workingDirectory + '/environment.log', JSON.stringify(environment, null, 2))
 
   // Execute our task
@@ -163,7 +163,7 @@ async function prepareWorkingDirectory(task) {
  * @param {*} task
  * @return {object} the config values
  */
-function collectEnvironment(task) {
+function collectEnvironment(task, workingDirectory) {
   var environment = process.env
   console.dir(task.config)
   console.dir(task.config.config)
@@ -179,6 +179,7 @@ function collectEnvironment(task) {
     environment[conf.environmentVariablePrefix + 'BUILDNUMBER'] = task.buildNumber
     environment[conf.environmentVariablePrefix + 'TASKID'] = task.task.id
     environment[conf.environmentVariablePrefix + 'BUILDID'] = task.buildID
+    environment[conf.environmentVariablePrefix + 'WORKINGDIR'] = workingDirectory
 
     // Now add in the event specific details, if they are available
     if (task.pullRequest != null) {
