@@ -21,6 +21,7 @@ const conf = require('rc')('stampede', {
   errorLogFile: 'stderr.log',
   responseQueue: 'stampede-response',
   environmentVariablePrefix: 'STAMP_',
+  shell: '/bin/bash',
 })
 
 const redisConfig = {
@@ -93,7 +94,7 @@ async function executeTask(workingDirectory, environment) {
       env: environment,
       encoding: 'utf8',
       stdio: ['ignore', stdoutlog, stderrlog],
-      shell: '/bin/zsh',
+      shell: conf.shell,
     }
 
     const spawned = spawn(conf.taskCommand, options)
