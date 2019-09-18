@@ -20,7 +20,7 @@ const conf = require('rc')('stampede', {
   workspaceRoot: null,
   environmentVariablePrefix: 'STAMP_',
   shell: '/bin/bash',
-  gitClone: 'true',
+  gitClone: 'ssh',
   // Log file configuration
   stdoutLogFile: 'stdout.log',
   stderrLogFile: 'stderr.log',
@@ -136,12 +136,16 @@ async function prepareWorkingDirectory(task) {
     fs.mkdirSync(dir)
   }
 
-  if (conf.gitClone === 'true') {
+  if (conf.gitClone === 'ssh' || conf.gitClone === 'https') {
     // Do a clone into our working directory
-    console.log(chalk.green('--- clone url'))
-    console.log(chalk.green(task.clone_url))
-    await cloneRepo(task.clone_url, dir)
-    await execute('ls -la', dir)
+    console.log(chalk.green('--- performing a git clone from:'))
+    if (conf.gitClone === 'ssh') {
+      console.log(chalk.green(task.ssh_url))
+      await cloneRepo(task.ssh_url, dir)  
+    } else if (conf.gitClone === 'https') {
+      console.log(chalk.green(task.clone_url))
+      await cloneRepo(task.clone_url, dir)  
+    }
 
     // Handle pull requests differently
     if (task.pullRequest != null) {
@@ -163,6 +167,8 @@ async function prepareWorkingDirectory(task) {
       console.dir(task.release_sha)
       await gitCheckout(task.release_sha, dir)
     }
+  } else {
+    console.log(chalk.green('--- skipping git clone as gitClone config was not ssh or https'))
   }
   return dir
 }
