@@ -10,18 +10,27 @@ const { exec } = require('child_process')
 const Queue = require('bull')
 
 const conf = require('rc')('stampede', {
-  // defaults
+  // Queue configuration
   redisHost: 'localhost',
   redisPort: 6379,
   redisPassword: null,
   taskQueue: null,
+  responseQueue: 'stampede-response',
+  // Command configuration
   taskCommand: null,
   workspaceRoot: null,
-  gitClone: 'true',
-  errorLogFile: 'stderr.log',
-  responseQueue: 'stampede-response',
   environmentVariablePrefix: 'STAMP_',
   shell: '/bin/bash',
+  gitClone: 'true',
+  // Log file configuration
+  stdoutLogFile: 'stdout.log',
+  stderrLogFile: 'stderr.log',
+  environmentLogFile: 'environment.log',
+  taskDetailsLogFile: 'worker.log',
+  successSummaryFile: null,
+  successTextFile: null,
+  errorSummaryFile: null,
+  errorTextFile: 'stderr.log',
 })
 
 const redisConfig = {
@@ -60,7 +69,9 @@ async function handleTask(task) {
 
   // Setup our environment variables
   const environment = collectEnvironment(task, workingDirectory)
-  fs.writeFileSync(workingDirectory + '/environment.log', JSON.stringify(environment, null, 2))
+  if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
+    fs.writeFileSync(workingDirectory + '/' + conf.environmentLogFile, JSON.stringify(environment, null, 2))
+  }
 
   // Execute our task
   const result = await executeTask(workingDirectory, environment)
