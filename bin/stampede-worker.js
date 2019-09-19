@@ -181,11 +181,10 @@ async function prepareWorkingDirectory(task) {
 function collectEnvironment(task, workingDirectory) {
   var environment = process.env
   console.dir(task.config)
-  console.dir(task.config.config)
-  if (task.config != null && task.config.config != null) {
-    Object.keys(task.config.config).forEach(function(key) {
+  if (task.config != null) {
+    Object.keys(task.config).forEach(function(key) {
       console.log('--- key: ' + key)
-      environment[conf.environmentVariablePrefix + key.toUpperCase()] = task.config.config[key]
+      environment[conf.environmentVariablePrefix + key.toUpperCase()] = task.config[key]
     })
 
     // And some common things from all events

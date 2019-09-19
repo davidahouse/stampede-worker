@@ -7,6 +7,8 @@ yarn-error.log*
 .DS_Store
 .stampederc
 .*rc
+startWorkers.sh
+stopWorkers.sh
 
 # Runtime data
 pids
