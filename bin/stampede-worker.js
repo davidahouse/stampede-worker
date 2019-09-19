@@ -141,10 +141,10 @@ async function prepareWorkingDirectory(task) {
     console.log(chalk.green('--- performing a git clone from:'))
     if (conf.gitClone === 'ssh') {
       console.log(chalk.green(task.ssh_url))
-      await cloneRepo(task.ssh_url, dir)  
+      await cloneRepo(task.ssh_url, dir)
     } else if (conf.gitClone === 'https') {
       console.log(chalk.green(task.clone_url))
-      await cloneRepo(task.clone_url, dir)  
+      await cloneRepo(task.clone_url, dir)
     }
 
     // Handle pull requests differently
