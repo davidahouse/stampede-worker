@@ -141,10 +141,10 @@ async function prepareWorkingDirectory(task) {
     console.log(chalk.green('--- performing a git clone from:'))
     if (conf.gitClone === 'ssh') {
       console.log(chalk.green(task.ssh_url))
-      await cloneRepo(task.ssh_url, dir)  
+      await cloneRepo(task.ssh_url, dir)
     } else if (conf.gitClone === 'https') {
       console.log(chalk.green(task.clone_url))
-      await cloneRepo(task.clone_url, dir)  
+      await cloneRepo(task.clone_url, dir)
     }
 
     // Handle pull requests differently
@@ -181,11 +181,10 @@ async function prepareWorkingDirectory(task) {
 function collectEnvironment(task, workingDirectory) {
   var environment = process.env
   console.dir(task.config)
-  console.dir(task.config.config)
-  if (task.config != null && task.config.config != null) {
-    Object.keys(task.config.config).forEach(function(key) {
+  if (task.config != null) {
+    Object.keys(task.config).forEach(function(key) {
       console.log('--- key: ' + key)
-      environment[conf.environmentVariablePrefix + key.toUpperCase()] = task.config.config[key]
+      environment[conf.environmentVariablePrefix + key.toUpperCase()] = task.config[key]
     })
 
     // And some common things from all events
