@@ -27,10 +27,15 @@ The configuration parameters are:
 | taskQueue | null | The task id that this worker should process events for |
 | taskCommand | null | The command line to execute to process the task |
 | workspaceRoot | null | The root folder for executing the command in |
-| gitClone | 'true' | If a git clone should be made before executing command for a task |
+| gitClone | ssh | If a git clone should be made before executing command for a task and the method. Values can be ssh or https. Any other value indicates no git clone will be required for the task |
 | errorLogFile | stderr.log | The name of the file to send as the summary for a failed task |
 | responseQueue | stampede-response | The name of the queue to send the task updates to |
 | environmentVariablePrefix | 'STAMP_' | The prefix for any environment variables |
+| shell | /bin/bash | The default shell to use when executing the command |
+| stdoutLogFile | stdout.log | The name of the file to use for stdout output from the executed command |
+| stderrLogFile | stderr.log | The name of the file to use for stderr output from the executed command |
+| environmentLogFile | environment.log | The name of a log file containing all the environment variables used when executing the command |
+| taskDetailsLogFile | worker.log | This name of a log file containing the task details sent back to the server when the task is complete |
 
 ## Environment
 
