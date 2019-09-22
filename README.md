@@ -31,6 +31,7 @@ The configuration parameters are:
 | errorLogFile | stderr.log | The name of the file to send as the summary for a failed task |
 | responseQueue | stampede-response | The name of the queue to send the task updates to |
 | environmentVariablePrefix | 'STAMP_' | The prefix for any environment variables |
+| shell | /bin/bash | The default shell to use when executing the command |
 
 ## Environment
 
