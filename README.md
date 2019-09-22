@@ -34,6 +34,7 @@ The configuration parameters are:
 | shell | /bin/bash | The default shell to use when executing the command |
 | stdoutLogFile | stdout.log | The name of the file to use for stdout output from the executed command |
 | stderrLogFile | stderr.log | The name of the file to use for stderr output from the executed command |
+| environmentLogFile | environment.log | The name of a log file containing all the environment variables used when executing the command |
 
 ## Environment
 
