@@ -32,6 +32,7 @@ The configuration parameters are:
 | responseQueue | stampede-response | The name of the queue to send the task updates to |
 | environmentVariablePrefix | 'STAMP_' | The prefix for any environment variables |
 | shell | /bin/bash | The default shell to use when executing the command |
+| stdoutLogFile | stdout.log | The name of the file to use for stdout output from the executed command |
 
 ## Environment
 
