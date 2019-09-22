@@ -33,6 +33,7 @@ The configuration parameters are:
 | environmentVariablePrefix | 'STAMP_' | The prefix for any environment variables |
 | shell | /bin/bash | The default shell to use when executing the command |
 | stdoutLogFile | stdout.log | The name of the file to use for stdout output from the executed command |
+| stderrLogFile | stderr.log | The name of the file to use for stderr output from the executed command |
 
 ## Environment
 
