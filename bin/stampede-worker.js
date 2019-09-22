@@ -295,27 +295,6 @@ async function gitMerge(sha, workingDirectory) {
 }
 
 /**
- * Execute a command
- * @param {*} cmd
- * @param {*} workingDirectory
- */
-async function execute(cmd, workingDirectory) {
-  return new Promise(resolve => {
-    exec(cmd, {cwd: workingDirectory}, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`execute error: ${error}`)
-        // TODO: figure out the error reason
-        resolve(false)
-        return
-      }
-      console.log(`stdout: ${stdout}`)
-      console.log(`stderr: ${stderr}`)
-      resolve(true)
-    })
-  })
-}
-
-/**
  * prepareConclusion
  * @param {*} workingDirectory
  * @param {*} conclusion
