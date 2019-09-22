@@ -4,7 +4,7 @@
   "description": "A centralized job queue system",
   "main": "bin/stampede-worker.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "mocha",
     "lint": "eslint -f codeframe --ignore-path .gitignore .",
     "lint-fix": "eslint --fix --ignore-path .gitignore .",
     "start": "nodemon bin/stampede-worker.js"
@@ -25,6 +25,8 @@
   },
   "devDependencies": {
     "eslint": "^6.3.0",
-    "eslint-config-strongloop": "^2.1.0"
+    "eslint-config-strongloop": "^2.1.0",
+    "mocha": "^5.2.0",
+    "chai": "^4.2.0"
   }
 }
