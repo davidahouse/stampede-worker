@@ -8,6 +8,8 @@ const { spawn } = require('child_process')
 const { exec } = require('child_process')
 const Queue = require('bull')
 
+require('pkginfo')(module)
+
 const conf = require('rc')('stampede', {
   // Queue configuration
   redisHost: 'localhost',
@@ -41,6 +43,7 @@ const redisConfig = {
 }
 
 console.log(chalk.red(figlet.textSync('stampede', {horizontalLayout: 'full'})))
+console.log(chalk.yellow(module.exports.version))
 console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
 console.log(chalk.red('Task Queue: ' + conf.taskQueue))
