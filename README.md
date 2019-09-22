@@ -35,6 +35,7 @@ The configuration parameters are:
 | stdoutLogFile | stdout.log | The name of the file to use for stdout output from the executed command |
 | stderrLogFile | stderr.log | The name of the file to use for stderr output from the executed command |
 | environmentLogFile | environment.log | The name of a log file containing all the environment variables used when executing the command |
+| taskDetailsLogFile | worker.log | This name of a log file containing the task details sent back to the server when the task is complete |
 
 ## Environment
 
