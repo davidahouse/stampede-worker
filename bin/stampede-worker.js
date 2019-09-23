@@ -112,8 +112,12 @@ async function executeTask(workingDirectory, environment) {
   return new Promise(resolve => {
     console.log(chalk.green('--- Executing: ' + conf.taskCommand))
 
-    const stdoutlog = fs.openSync(workingDirectory + '/' + conf.stdoutLogFile, 'a')
-    const stderrlog = fs.openSync(workingDirectory + '/' + conf.stderrLogFile, 'a')
+    const stdoutlog = conf.stdoutLogFile != null ?
+      fs.openSync(workingDirectory + '/' + conf.stdoutLogFile, 'a') :
+      'ignore'
+    const stderrlog = conf.stderrLogFile != null ?
+      fs.openSync(workingDirectory + '/' + conf.stderrLogFile, 'a') :
+      stdoutlog
 
     const options = {
       cwd: workingDirectory,
