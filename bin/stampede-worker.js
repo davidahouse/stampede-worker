@@ -8,6 +8,8 @@ const { spawn } = require('child_process')
 const { exec } = require('child_process')
 const Queue = require('bull')
 
+const queueLog = require('../lib/queueLog')
+
 require('pkginfo')(module)
 
 const conf = require('rc')('stampede', {
@@ -32,6 +34,7 @@ const conf = require('rc')('stampede', {
   successTextFile: null,
   errorSummaryFile: null,
   errorTextFile: 'stderr.log',
+  logQueuePath: null,
 })
 
 const redisConfig = {
@@ -48,9 +51,18 @@ console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
 console.log(chalk.red('Task Queue: ' + conf.taskQueue))
 
+if (conf.taskQueue == null) {
+  console.log(chalk.red('No task queue defined. A worker needs a task queue to operate!'))
+  process.exit(1)
+}
+
 const workerQueue = new Queue('stampede-' + conf.taskQueue, redisConfig)
 
 workerQueue.process(function(task) {
+  // Save the message if our logQueuePath is set
+  if (conf.logQueuePath != null) {
+    queueLog.save(conf.taskQueue, task.data, conf.logQueuePath)
+  }
   return handleTask(task.data)
 })
 
