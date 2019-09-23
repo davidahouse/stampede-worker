@@ -27,7 +27,7 @@ const conf = require('rc')('stampede', {
   gitClone: 'ssh',
   // Log file configuration
   stdoutLogFile: 'stdout.log',
-  stderrLogFile: 'stderr.log',
+  stderrLogFile: null,
   environmentLogFile: 'environment.log',
   taskDetailsLogFile: 'worker.log',
   successSummaryFile: null,
