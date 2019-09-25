@@ -25,7 +25,7 @@ const conf = require('rc')('stampede', {
   environmentVariablePrefix: 'STAMP_',
   shell: '/bin/bash',
   gitClone: 'ssh',
-  gitCloneDepth: 1,
+  gitCloneOptions: '',
   // Log file configuration
   stdoutLogFile: 'stdout.log',
   stderrLogFile: null,
@@ -161,10 +161,10 @@ async function prepareWorkingDirectory(task) {
     console.log(chalk.green('--- performing a git clone from:'))
     if (conf.gitClone === 'ssh') {
       console.log(chalk.green(task.ssh_url))
-      await cloneRepo(task.ssh_url, dir, conf.gitCloneDepth)
+      await cloneRepo(task.ssh_url, dir, conf.gitCloneOptions)
     } else if (conf.gitClone === 'https') {
       console.log(chalk.green(task.clone_url))
-      await cloneRepo(task.clone_url, dir, conf.gitCloneDepth)
+      await cloneRepo(task.clone_url, dir, conf.gitCloneOptions)
     }
 
     // Handle pull requests differently
@@ -256,12 +256,9 @@ async function updateTask(task) {
  * @param {*} cloneUrl
  * @param {*} workingDirectory
  */
-async function cloneRepo(cloneUrl, workingDirectory, cloneDepth) {
+async function cloneRepo(cloneUrl, workingDirectory, cloneOptions) {
   return new Promise(resolve => {
-    const depth = cloneDepth != null ?
-      ' --depth ' + cloneDepth + ' --no-single-branch '
-      : ''
-    exec('git clone ' + depth + cloneUrl + ' ' + workingDirectory, (error, stdout, stderr) => {
+    exec('git clone ' + cloneOptions + ' ' + cloneUrl + ' ' + workingDirectory, (error, stdout, stderr) => {
       if (error) {
         console.error(`cloneRepo error: ${error}`)
         // TODO: figure out the error reason
