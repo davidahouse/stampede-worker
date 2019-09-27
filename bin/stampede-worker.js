@@ -78,7 +78,7 @@ async function handleTask(task) {
   task.status = 'in_progress'
   task.worker = {
     node: '',
-    version: module.exports.version
+    version: module.exports.version,
   }
   await updateTask(task)
 
