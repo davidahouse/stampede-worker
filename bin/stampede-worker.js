@@ -224,15 +224,19 @@ function collectEnvironment(task, workingDirectory) {
       environment[conf.environmentVariablePrefix + 'PULLREQUESTNUMBER'] = task.pullRequest.number
       environment[conf.environmentVariablePrefix + 'PULLREQUESTBRANCH'] = task.pullRequest.head.ref
       environment[conf.environmentVariablePrefix + 'PULLREQUESTBASEBRANCH'] = task.pullRequest.base.ref
+      environment[conf.environmentVariablePrefix + 'GITSHABASE'] = task.pullRequest.base.sha
+      environment[conf.environmentVariablePrefix + 'GITSHAHEAD'] = task.pullRequest.head.sha
     }
 
     if (task.branch != null) {
       environment[conf.environmentVariablePrefix + 'BRANCH'] = task.branch
+      environment[conf.environmentVariablePrefix + 'GITSHA'] = task.sha
     }
 
     if (task.release != null) {
       environment[conf.environmentVariablePrefix + 'RELEASE'] = task.release
       environment[conf.environmentVariablePrefix + 'TAG'] = task.tag
+      environment[conf.environmentVariablePrefix + 'GITSHA'] = task.sha
     }
   } else {
     console.log(chalk.red('--- no config found!'))
