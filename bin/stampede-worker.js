@@ -76,6 +76,10 @@ const responseQueue = new Queue(conf.responseQueue, redisConfig)
 async function handleTask(task) {
   console.dir(task)
   task.status = 'in_progress'
+  task.worker = {
+    node: '',
+    version: module.exports.version
+  }
   await updateTask(task)
 
   // Create the working directory and prepare it
