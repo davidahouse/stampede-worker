@@ -17,6 +17,7 @@ const conf = require('rc')('stampede', {
   redisHost: 'localhost',
   redisPort: 6379,
   redisPassword: null,
+  nodeName: 'missing-node-name',
   taskQueue: null,
   responseQueue: 'stampede-response',
   // Command configuration
@@ -77,7 +78,7 @@ async function handleTask(task) {
   console.dir(task)
   task.status = 'in_progress'
   task.worker = {
-    node: '',
+    node: conf.nodeName,
     version: module.exports.version,
   }
   await updateTask(task)
