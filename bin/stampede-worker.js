@@ -92,7 +92,12 @@ async function handleTask(task) {
   }
 
   // Execute our task
+  const startedAt = new Date()
   const result = await executeTask(workingDirectory, environment)
+  const finishedAt = new Date()
+  task.stats.startedAt = startedAt
+  task.stats.finishedAt = finishedAt
+  task.status.duration = Math.abs(finishedAt.getTime() - startedAt.getTime())
 
   // Now finalize our task status
   task.status = 'completed'
