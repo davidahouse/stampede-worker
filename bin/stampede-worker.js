@@ -9,6 +9,7 @@ const { exec } = require('child_process')
 const Queue = require('bull')
 
 const queueLog = require('../lib/queueLog')
+const responseTestFile = require('../lib/responseTestFile')
 
 require('pkginfo')(module)
 
@@ -20,6 +21,12 @@ const conf = require('rc')('stampede', {
   nodeName: 'missing-node-name',
   taskQueue: null,
   responseQueue: 'stampede-response',
+  // Test mode. Set both of these to enable test mode
+  // where the worker will execute the task that is in the
+  // taskTestFile, and the results will go into the
+  // response file.
+  taskTestFile: null,
+  responseTestFile: null,
   // Command configuration
   taskCommand: null,
   workspaceRoot: null,
@@ -58,30 +65,36 @@ if (conf.taskQueue == null) {
   process.exit(1)
 }
 
-const workerQueue = new Queue('stampede-' + conf.taskQueue, redisConfig)
+if (conf.taskTestFile == null) {
+  const workerQueue = new Queue('stampede-' + conf.taskQueue, redisConfig)
+  const responseQueue = new Queue(conf.responseQueue, redisConfig)
 
-workerQueue.process(function(task) {
-  // Save the message if our logQueuePath is set
-  if (conf.logQueuePath != null) {
-    queueLog.save(conf.taskQueue, task.data, conf.logQueuePath)
-  }
-  return handleTask(task.data)
-})
+  workerQueue.process(function(task) {
+    // Save the message if our logQueuePath is set
+    if (conf.logQueuePath != null) {
+      queueLog.save(conf.taskQueue, task.data, conf.logQueuePath)
+    }
+    return handleTask(task.data, responseQueue)
+  })
 
-const responseQueue = new Queue(conf.responseQueue, redisConfig)
+} else {
+  const task = JSON.parse(fs.readFileSync(conf.taskTestFile))
+  responseTestFile.init(conf.responseTestFile)
+  handleTask(task, responseTestFile)
+}
 
 /**
  * Handle an incoming task
  * @param {*} task
  */
-async function handleTask(task) {
+async function handleTask(task, responseQueue) {
   console.dir(task)
   task.status = 'in_progress'
   task.worker = {
     node: conf.nodeName,
     version: module.exports.version,
   }
-  await updateTask(task)
+  await updateTask(task, responseQueue)
 
   // Create the working directory and prepare it
   const workingDirectory = await prepareWorkingDirectory(task)
@@ -98,7 +111,7 @@ async function handleTask(task) {
   const finishedAt = new Date()
   task.stats.startedAt = startedAt
   task.stats.finishedAt = finishedAt
-  task.status.duration = Math.abs(finishedAt.getTime() - startedAt.getTime())
+  task.stats.duration = Math.abs(finishedAt.getTime() - startedAt.getTime())
 
   // Now finalize our task status
   task.status = 'completed'
@@ -111,7 +124,7 @@ async function handleTask(task) {
   if (conf.taskDetailsLogFile != null && conf.taskDetailsLogFile.length > 0) {
     fs.writeFileSync(workingDirectory + '/' + conf.taskDetailsLogFile, JSON.stringify(task, null, 2))
   }
-  await updateTask(task)
+  await updateTask(task, responseQueue)
 }
 
 /**
@@ -165,6 +178,7 @@ async function prepareWorkingDirectory(task) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir)
   }
+  console.log('--- working directory: ' + dir)
 
   if (conf.gitClone === 'ssh' || conf.gitClone === 'https') {
     // Do a clone into our working directory
@@ -255,7 +269,7 @@ function collectEnvironment(task, workingDirectory) {
  * Update the task in redis and in github
  * @param {*} task
  */
-async function updateTask(task) {
+async function updateTask(task, responseQueue) {
   if (task.external_id == null) {
     console.log(chalk.yellow('--- no external id so not updating task'))
     return
