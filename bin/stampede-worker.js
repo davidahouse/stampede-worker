@@ -241,6 +241,7 @@ function collectEnvironment(task, workingDirectory) {
 
     // Now add in the event specific details, if they are available
     if (task.pullRequest != null) {
+      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = 'pullrequest-' + task.pullRequest.number
       environment[conf.environmentVariablePrefix + 'PULLREQUESTNUMBER'] = task.pullRequest.number
       environment[conf.environmentVariablePrefix + 'PULLREQUESTBRANCH'] = task.pullRequest.head.ref
       environment[conf.environmentVariablePrefix + 'PULLREQUESTBASEBRANCH'] = task.pullRequest.base.ref
@@ -249,11 +250,13 @@ function collectEnvironment(task, workingDirectory) {
     }
 
     if (task.branch != null) {
+      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = task.branch
       environment[conf.environmentVariablePrefix + 'BRANCH'] = task.branch
       environment[conf.environmentVariablePrefix + 'GITSHA'] = task.sha
     }
 
     if (task.release != null) {
+      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = task.release
       environment[conf.environmentVariablePrefix + 'RELEASE'] = task.release
       environment[conf.environmentVariablePrefix + 'TAG'] = task.tag
       environment[conf.environmentVariablePrefix + 'GITSHA'] = task.sha
