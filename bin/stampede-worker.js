@@ -115,12 +115,7 @@ async function handleTask(task, responseQueue) {
 
   // Now finalize our task status
   task.status = 'completed'
-  task.conclusion = result.conclusion
-  task.output = {
-    title: result.title,
-    summary: result.summary,
-    text: result.text,
-  }
+  task.result = result
   if (conf.taskDetailsLogFile != null && conf.taskDetailsLogFile.length > 0) {
     fs.writeFileSync(workingDirectory + '/' + conf.taskDetailsLogFile, JSON.stringify(task, null, 2))
   }
@@ -174,7 +169,7 @@ async function executeTask(workingDirectory, environment) {
  * @param {*} task
  */
 async function prepareWorkingDirectory(task) {
-  const dir = conf.workspaceRoot + '/' + task.external_id
+  const dir = conf.workspaceRoot + '/' + task.scm.externalID
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir)
   }
@@ -184,32 +179,32 @@ async function prepareWorkingDirectory(task) {
     // Do a clone into our working directory
     console.log(chalk.green('--- performing a git clone from:'))
     if (conf.gitClone === 'ssh') {
-      console.log(chalk.green(task.ssh_url))
-      await cloneRepo(task.ssh_url, dir, conf.gitCloneOptions)
+      console.log(chalk.green(task.scm.sshURL))
+      await cloneRepo(task.scm.sshURL, dir, conf.gitCloneOptions)
     } else if (conf.gitClone === 'https') {
-      console.log(chalk.green(task.clone_url))
-      await cloneRepo(task.clone_url, dir, conf.gitCloneOptions)
+      console.log(chalk.green(task.scm.cloneURL))
+      await cloneRepo(task.scm.cloneURL, dir, conf.gitCloneOptions)
     }
 
     // Handle pull requests differently
-    if (task.pullRequest != null) {
+    if (task.scm.pullRequest != null) {
       // Now checkout our head sha
       console.log(chalk.green('--- head'))
-      console.dir(task.pullRequest.head)
-      await gitCheckout(task.pullRequest.head.sha, dir)
+      console.dir(task.scm.pullRequest.head)
+      await gitCheckout(task.scm.pullRequest.head.sha, dir)
       // And then merge the base sha
       console.log(chalk.green('--- base'))
-      console.dir(task.pullRequest.base)
-      await gitMerge(task.pullRequest.base.sha, dir)
+      console.dir(task.scm.pullRequest.base)
+      await gitMerge(task.scm.pullRequest.base.sha, dir)
       // Fail if we have merge conflicts
-    } else if (task.branch != null) {
+    } else if (task.scm.branch != null) {
       console.log(chalk.green('--- sha'))
-      console.dir(task.branch_sha)
-      await gitCheckout(task.branch_sha, dir)
-    } else if (task.release != null) {
+      console.dir(task.scm.branch.sha)
+      await gitCheckout(task.scm.branch.sha, dir)
+    } else if (task.scm.release != null) {
       console.log(chalk.green('--- sha'))
-      console.dir(task.release_sha)
-      await gitCheckout(task.release_sha, dir)
+      console.dir(task.scm.release.sha)
+      await gitCheckout(task.scm.release.sha, dir)
     }
   } else {
     console.log(chalk.green('--- skipping git clone as gitClone config was not ssh or https'))
@@ -240,26 +235,26 @@ function collectEnvironment(task, workingDirectory) {
     environment[conf.environmentVariablePrefix + 'WORKINGDIR'] = workingDirectory
 
     // Now add in the event specific details, if they are available
-    if (task.pullRequest != null) {
-      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = 'pullrequest-' + task.pullRequest.number
-      environment[conf.environmentVariablePrefix + 'PULLREQUESTNUMBER'] = task.pullRequest.number
-      environment[conf.environmentVariablePrefix + 'PULLREQUESTBRANCH'] = task.pullRequest.head.ref
-      environment[conf.environmentVariablePrefix + 'PULLREQUESTBASEBRANCH'] = task.pullRequest.base.ref
-      environment[conf.environmentVariablePrefix + 'GITSHABASE'] = task.pullRequest.base.sha
-      environment[conf.environmentVariablePrefix + 'GITSHAHEAD'] = task.pullRequest.head.sha
+    if (task.scm.pullRequest != null) {
+      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = 'pullrequest-' + task.scm.pullRequest.number
+      environment[conf.environmentVariablePrefix + 'PULLREQUESTNUMBER'] = task.scm.pullRequest.number
+      environment[conf.environmentVariablePrefix + 'PULLREQUESTBRANCH'] = task.scm.pullRequest.head.ref
+      environment[conf.environmentVariablePrefix + 'PULLREQUESTBASEBRANCH'] = task.scm.pullRequest.base.ref
+      environment[conf.environmentVariablePrefix + 'GITSHABASE'] = task.scm.pullRequest.base.sha
+      environment[conf.environmentVariablePrefix + 'GITSHAHEAD'] = task.scm.pullRequest.head.sha
     }
 
-    if (task.branch != null) {
-      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = task.branch
-      environment[conf.environmentVariablePrefix + 'BRANCH'] = task.branch
-      environment[conf.environmentVariablePrefix + 'GITSHA'] = task.sha
+    if (task.scm.branch != null) {
+      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = task.scm.branch.name
+      environment[conf.environmentVariablePrefix + 'BRANCH'] = task.scm.branch.name
+      environment[conf.environmentVariablePrefix + 'GITSHA'] = task.scm.branch.sha
     }
 
-    if (task.release != null) {
-      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = task.release
-      environment[conf.environmentVariablePrefix + 'RELEASE'] = task.release
-      environment[conf.environmentVariablePrefix + 'TAG'] = task.tag
-      environment[conf.environmentVariablePrefix + 'GITSHA'] = task.sha
+    if (task.scm.release != null) {
+      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = task.scm.release.name
+      environment[conf.environmentVariablePrefix + 'RELEASE'] = task.scm.release.name
+      environment[conf.environmentVariablePrefix + 'TAG'] = task.scm.release.tag
+      environment[conf.environmentVariablePrefix + 'GITSHA'] = task.scm.release.sha
     }
   } else {
     console.log(chalk.red('--- no config found!'))
@@ -273,7 +268,7 @@ function collectEnvironment(task, workingDirectory) {
  * @param {*} task
  */
 async function updateTask(task, responseQueue) {
-  if (task.external_id == null) {
+  if (task.scm.externalID == null) {
     console.log(chalk.yellow('--- no external id so not updating task'))
     return
   }
