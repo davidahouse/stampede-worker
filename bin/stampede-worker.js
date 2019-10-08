@@ -91,8 +91,9 @@ if (conf.taskTestFile == null) {
  * @param {*} task
  */
 async function handleTask(task, responseQueue) {
-  console.dir(task)
+  const startedAt = new Date()
   task.status = 'in_progress'
+  task.stats.startedAt = startedAt
   task.worker = {
     node: conf.nodeName,
     version: module.exports.version,
@@ -110,12 +111,9 @@ async function handleTask(task, responseQueue) {
   }
 
   // Execute our task
-  const startedAt = new Date()
   const result = await executeTask(workingDirectory, environment)
   const finishedAt = new Date()
-  task.stats.startedAt = startedAt
   task.stats.finishedAt = finishedAt
-  task.stats.duration = Math.abs(finishedAt.getTime() - startedAt.getTime())
 
   // Now finalize our task status
   task.status = 'completed'
