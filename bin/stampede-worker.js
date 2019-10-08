@@ -45,6 +45,9 @@ const conf = require('rc')('stampede', {
   errorSummaryFile: null,
   errorTextFile: 'stderr.log',
   logQueuePath: null,
+  // Heartbeat
+  heartbeatQueue: 'stampede-heartbeat',
+  heartbeatInterval: 15000,
 })
 
 const redisConfig = {
@@ -55,6 +58,8 @@ const redisConfig = {
   },
 }
 const workerID = uuidv4()
+let workerStatus = 'idle'
+let lastTask = {}
 
 console.log(chalk.red(figlet.textSync('stampede', {horizontalLayout: 'full'})))
 console.log(chalk.yellow(module.exports.version))
@@ -71,6 +76,9 @@ if (conf.taskQueue == null) {
 if (conf.taskTestFile == null) {
   const workerQueue = new Queue('stampede-' + conf.taskQueue, redisConfig)
   const responseQueue = new Queue(conf.responseQueue, redisConfig)
+  const heartbeatQueue = conf.heartbeatQueue != null ?
+    new Queue(conf.heartbeatQueue, redisConfig) :
+    null
 
   workerQueue.process(function(task) {
     // Save the message if our logQueuePath is set
@@ -80,6 +88,9 @@ if (conf.taskTestFile == null) {
     return handleTask(task.data, responseQueue)
   })
 
+  if (heartbeatQueue != null) {
+    handleHeartbeat(heartbeatQueue)
+  }
 } else {
   const task = JSON.parse(fs.readFileSync(conf.taskTestFile))
   responseTestFile.init(conf.responseTestFile)
@@ -91,6 +102,8 @@ if (conf.taskTestFile == null) {
  * @param {*} task
  */
 async function handleTask(task, responseQueue) {
+  workerStatus = 'busy'
+  lastTask = task
   const startedAt = new Date()
   task.status = 'in_progress'
   task.stats.startedAt = startedAt
@@ -122,6 +135,25 @@ async function handleTask(task, responseQueue) {
     fs.writeFileSync(workingDirectory + '/' + conf.taskDetailsLogFile, JSON.stringify(task, null, 2))
   }
   await updateTask(task, responseQueue)
+  workerStatus = 'idle'
+}
+
+/**
+ * send out a heartbeat notification
+ * @param {*} queue
+ */
+async function handleHeartbeat(queue) {
+  const heartbeat = {
+    timestamp: new Date(),
+    node: conf.nodeName,
+    version: module.exports.version,
+    workerID: workerID,
+    status: workerStatus,
+    lastTask: lastTask,
+    taskQueue: conf.taskQueue,
+  }
+  queue.add(heartbeat)
+  setTimeout(handleHeartbeat, conf.heartbeatInterval, queue)
 }
 
 /**
