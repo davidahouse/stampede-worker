@@ -173,7 +173,7 @@ async function executeTask(workingDirectory, environment) {
  * @param {*} task
  */
 async function prepareWorkingDirectory(task) {
-  const dir = conf.workspaceRoot + '/' + task.scm.taskID
+  const dir = conf.workspaceRoot + '/' + task.taskID
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir)
   }
@@ -234,8 +234,9 @@ function collectEnvironment(task, workingDirectory) {
     environment[conf.environmentVariablePrefix + 'OWNER'] = task.owner
     environment[conf.environmentVariablePrefix + 'REPO'] = task.repository
     environment[conf.environmentVariablePrefix + 'BUILDNUMBER'] = task.buildNumber
-    environment[conf.environmentVariablePrefix + 'TASKID'] = task.task.id
+    environment[conf.environmentVariablePrefix + 'TASK'] = task.task.id
     environment[conf.environmentVariablePrefix + 'BUILDID'] = task.buildID
+    environment[conf.environmentVariablePrefix + 'TASKID'] = task.taskID
     environment[conf.environmentVariablePrefix + 'WORKINGDIR'] = workingDirectory
 
     // Now add in the event specific details, if they are available
