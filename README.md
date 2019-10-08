@@ -47,6 +47,7 @@ The following environment variables are created and passed to the command line:
 - STAMP_OWNER
 - STAMP_REPO
 - STAMP_BUILDNUMBER
+- STAMP_TASK
 - STAMP_TASKID
 - STAMP_BUILDID
 
