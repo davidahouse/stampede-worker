@@ -7,6 +7,7 @@ const fs = require('fs')
 const { spawn } = require('child_process')
 const { exec } = require('child_process')
 const Queue = require('bull')
+const uuidv4 = require('uuid/v4')
 
 const queueLog = require('../lib/queueLog')
 const responseTestFile = require('../lib/responseTestFile')
@@ -53,12 +54,14 @@ const redisConfig = {
     password: conf.redisPassword,
   },
 }
+const workerID = uuidv4()
 
 console.log(chalk.red(figlet.textSync('stampede', {horizontalLayout: 'full'})))
 console.log(chalk.yellow(module.exports.version))
 console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
 console.log(chalk.red('Task Queue: ' + conf.taskQueue))
+console.log(chalk.red('Worker ID: ' + workerID))
 
 if (conf.taskQueue == null) {
   console.log(chalk.red('No task queue defined. A worker needs a task queue to operate!'))
@@ -93,6 +96,7 @@ async function handleTask(task, responseQueue) {
   task.worker = {
     node: conf.nodeName,
     version: module.exports.version,
+    workerID: workerID,
   }
   await updateTask(task, responseQueue)
 
@@ -169,7 +173,7 @@ async function executeTask(workingDirectory, environment) {
  * @param {*} task
  */
 async function prepareWorkingDirectory(task) {
-  const dir = conf.workspaceRoot + '/' + task.scm.externalID
+  const dir = conf.workspaceRoot + '/' + task.scm.taskID
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir)
   }
@@ -268,10 +272,6 @@ function collectEnvironment(task, workingDirectory) {
  * @param {*} task
  */
 async function updateTask(task, responseQueue) {
-  if (task.scm.externalID == null) {
-    console.log(chalk.yellow('--- no external id so not updating task'))
-    return
-  }
   console.log(chalk.green('--- updating task with status: ' + task.status))
   console.dir(task)
   responseQueue.add(task)
