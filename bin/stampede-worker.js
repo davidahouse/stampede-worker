@@ -28,6 +28,7 @@ const conf = require('rc')('stampede', {
   // response file.
   taskTestFile: null,
   responseTestFile: null,
+  stampedeConfigPath: null,
   // Command configuration
   taskCommand: null,
   workspaceRoot: null,
