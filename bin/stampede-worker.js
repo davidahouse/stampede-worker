@@ -128,7 +128,7 @@ async function handleTask(task, responseQueue) {
     task.status = 'completed'
     task.result = {
       conclusion: 'failure',
-      summary: taskExecutionConfig.error
+      summary: taskExecutionConfig.error,
     }
     await updateTask(task, responseQueue)
     workerStatus = 'idle'
@@ -239,7 +239,7 @@ async function prepareWorkingDirectory(taskExecutionConfig) {
       console.log(chalk.green(taskExecutionConfig.task.scm.sshURL))
       await cloneRepo(taskExecutionConfig.task.scm.sshURL, dir, taskExecutionConfig.gitCloneOptions)
     } else if (conf.gitClone === 'https') {
-      console.log(chalk.green(task.scm.cloneURL))
+      console.log(chalk.green(taskExecutionConfig.task.scm.cloneURL))
       await cloneRepo(taskExecutionConfig.task.scm.cloneURL, dir, taskExecutionConfig.gitCloneOptions)
     }
 
