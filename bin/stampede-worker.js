@@ -11,39 +11,37 @@ const uuidv4 = require('uuid/v4')
 
 const queueLog = require('../lib/queueLog')
 const responseTestFile = require('../lib/responseTestFile')
+const executionConfig = require('../lib/executionConfig')
 
 require('pkginfo')(module)
 
 const conf = require('rc')('stampede', {
-  // Queue configuration
+  // Required configuration
   redisHost: 'localhost',
   redisPort: 6379,
   redisPassword: null,
-  nodeName: 'missing-node-name',
-  taskQueue: null,
+  nodeName: null,
+  stampedeConfigPath: null,
+  stampedeScriptPath: null,
+  taskQueue: 'stampede-tasks',
   responseQueue: 'stampede-response',
+  workspaceRoot: null,
   // Test mode. Set both of these to enable test mode
   // where the worker will execute the task that is in the
   // taskTestFile, and the results will go into the
   // response file.
   taskTestFile: null,
   responseTestFile: null,
-  // Command configuration
-  taskCommand: null,
-  workspaceRoot: null,
+  // Task defaults
   environmentVariablePrefix: 'STAMP_',
   shell: '/bin/bash',
   gitClone: 'ssh',
-  gitCloneOptions: '',
-  // Log file configuration
+  gitCloneOptions: null,
   stdoutLogFile: 'stdout.log',
   stderrLogFile: null,
+  // Log file configuration
   environmentLogFile: 'environment.log',
   taskDetailsLogFile: 'worker.log',
-  successSummaryFile: null,
-  successTextFile: null,
-  errorSummaryFile: null,
-  errorTextFile: 'stderr.log',
   logQueuePath: null,
   // Heartbeat
   heartbeatQueue: 'stampede-heartbeat',
@@ -65,11 +63,18 @@ console.log(chalk.red(figlet.textSync('stampede', {horizontalLayout: 'full'})))
 console.log(chalk.yellow(module.exports.version))
 console.log(chalk.red('Redis Host: ' + conf.redisHost))
 console.log(chalk.red('Redis Port: ' + conf.redisPort))
+console.log(chalk.red('Node Name: ' + conf.nodeName))
+console.log(chalk.red('Config Path: ' + conf.stampedeConfigPath))
+console.log(chalk.red('Script Path: ' + conf.stampedeScriptPath))
 console.log(chalk.red('Task Queue: ' + conf.taskQueue))
+console.log(chalk.red('Workspace Root: ' + conf.workspaceRoot))
 console.log(chalk.red('Worker ID: ' + workerID))
 
-if (conf.taskQueue == null) {
-  console.log(chalk.red('No task queue defined. A worker needs a task queue to operate!'))
+// Check for all our required parameters
+if (conf.redisHost == null || conf.redisPort == null || conf.nodeName == null ||
+    conf.stampedeConfigPath == null || conf.stampedeScriptPath == null ||
+    conf.workspaceRoot == null) {
+  console.log(chalk.red('Missing required config parameters. Unable to start worker.'))
   process.exit(1)
 }
 
@@ -112,19 +117,35 @@ async function handleTask(task, responseQueue) {
     version: module.exports.version,
     workerID: workerID,
   }
+  console.log('--- Updating task to in progress')
   await updateTask(task, responseQueue)
 
+  // Gather up the execution config options we will need for this task
+  const taskExecutionConfig = await executionConfig.prepareExecutionConfig(task, conf)
+  console.dir(taskExecutionConfig)
+  if (taskExecutionConfig.error != null) {
+    console.log('--- Error getting execution config')
+    task.status = 'completed'
+    task.result = {
+      conclusion: 'failure',
+      summary: taskExecutionConfig.error,
+    }
+    await updateTask(task, responseQueue)
+    workerStatus = 'idle'
+    return
+  }
+
   // Create the working directory and prepare it
-  const workingDirectory = await prepareWorkingDirectory(task)
+  const workingDirectory = await prepareWorkingDirectory(taskExecutionConfig)
 
   // Setup our environment variables
-  const environment = collectEnvironment(task, workingDirectory)
+  const environment = collectEnvironment(taskExecutionConfig, workingDirectory)
   if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
     fs.writeFileSync(workingDirectory + '/' + conf.environmentLogFile, JSON.stringify(environment, null, 2))
   }
 
   // Execute our task
-  const result = await executeTask(workingDirectory, environment)
+  const result = await executeTask(taskExecutionConfig, workingDirectory, environment)
   const finishedAt = new Date()
   task.stats.finishedAt = finishedAt
 
@@ -158,18 +179,20 @@ async function handleHeartbeat(queue) {
 
 /**
  * execute the task and capture any results
+ * @param {*} taskExecutionConfig
  * @param {*} workingDirectory
  * @param {*} environment
  */
-async function executeTask(workingDirectory, environment) {
+async function executeTask(taskExecutionConfig, workingDirectory, environment) {
   return new Promise(resolve => {
-    console.log(chalk.green('--- Executing: ' + conf.taskCommand))
+    const taskCommand = conf.stampedeScriptPath + '/' + taskExecutionConfig.taskCommand
+    console.log(chalk.green('--- Executing: ' + taskCommand))
 
-    const stdoutlog = conf.stdoutLogFile != null ?
-      fs.openSync(workingDirectory + '/' + conf.stdoutLogFile, 'a') :
+    const stdoutlog = taskExecutionConfig.stdoutLogFile != null ?
+      fs.openSync(workingDirectory + '/' + taskExecutionConfig.stdoutLogFile, 'a') :
       'ignore'
-    const stderrlog = conf.stderrLogFile != null ?
-      fs.openSync(workingDirectory + '/' + conf.stderrLogFile, 'a') :
+    const stderrlog = taskExecutionConfig.stderrLogFile != null ?
+      fs.openSync(workingDirectory + '/' + taskExecutionConfig.stderrLogFile, 'a') :
       stdoutlog
 
     const options = {
@@ -177,21 +200,21 @@ async function executeTask(workingDirectory, environment) {
       env: environment,
       encoding: 'utf8',
       stdio: ['ignore', stdoutlog, stderrlog],
-      shell: conf.shell,
+      shell: taskExecutionConfig.shell,
     }
 
-    const spawned = spawn(conf.taskCommand, options)
+    const spawned = spawn(taskCommand, taskExecutionConfig.taskArguments, options)
     spawned.on('close', (code) => {
       console.log(chalk.green('--- task finished: ' + code))
       if (code !== 0) {
         const conclusion = prepareConclusion(workingDirectory, 'failure', 'Task results',
-          'Task Failed', conf.errorSummaryFile,
-          '', conf.errorTextFile)
+          'Task Failed', taskExecutionConfig.errorSummaryFile,
+          '', taskExecutionConfig.errorTextFile)
         resolve(conclusion)
       } else {
         const conclusion = prepareConclusion(workingDirectory, 'success', 'Task results',
-          'Task was successful', conf.successSummaryFile,
-          '', conf.successTextFile)
+          'Task was successful', taskExecutionConfig.successSummaryFile,
+          '', taskExecutionConfig.successTextFile)
         resolve(conclusion)
       }
     })
@@ -200,45 +223,45 @@ async function executeTask(workingDirectory, environment) {
 
 /**
  * prepare the working directory
- * @param {*} task
+ * @param {*} taskExecutionConfig
  */
-async function prepareWorkingDirectory(task) {
-  const dir = conf.workspaceRoot + '/' + task.taskID
+async function prepareWorkingDirectory(taskExecutionConfig) {
+  const dir = conf.workspaceRoot + '/' + taskExecutionConfig.task.taskID
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir)
   }
   console.log('--- working directory: ' + dir)
 
-  if (conf.gitClone === 'ssh' || conf.gitClone === 'https') {
+  if (taskExecutionConfig.gitClone === 'ssh' || taskExecutionConfig.gitClone === 'https') {
     // Do a clone into our working directory
     console.log(chalk.green('--- performing a git clone from:'))
-    if (conf.gitClone === 'ssh') {
-      console.log(chalk.green(task.scm.sshURL))
-      await cloneRepo(task.scm.sshURL, dir, conf.gitCloneOptions)
+    if (taskExecutionConfig.gitClone === 'ssh') {
+      console.log(chalk.green(taskExecutionConfig.task.scm.sshURL))
+      await cloneRepo(taskExecutionConfig.task.scm.sshURL, dir, taskExecutionConfig.gitCloneOptions)
     } else if (conf.gitClone === 'https') {
-      console.log(chalk.green(task.scm.cloneURL))
-      await cloneRepo(task.scm.cloneURL, dir, conf.gitCloneOptions)
+      console.log(chalk.green(taskExecutionConfig.task.scm.cloneURL))
+      await cloneRepo(taskExecutionConfig.task.scm.cloneURL, dir, taskExecutionConfig.gitCloneOptions)
     }
 
     // Handle pull requests differently
-    if (task.scm.pullRequest != null) {
+    if (taskExecutionConfig.task.scm.pullRequest != null) {
       // Now checkout our head sha
       console.log(chalk.green('--- head'))
-      console.dir(task.scm.pullRequest.head)
-      await gitCheckout(task.scm.pullRequest.head.sha, dir)
+      console.dir(taskExecutionConfig.task.scm.pullRequest.head)
+      await gitCheckout(taskExecutionConfig.task.scm.pullRequest.head.sha, dir)
       // And then merge the base sha
       console.log(chalk.green('--- base'))
-      console.dir(task.scm.pullRequest.base)
-      await gitMerge(task.scm.pullRequest.base.sha, dir)
+      console.dir(taskExecutionConfig.task.scm.pullRequest.base)
+      await gitMerge(taskExecutionConfig.task.scm.pullRequest.base.sha, dir)
       // Fail if we have merge conflicts
-    } else if (task.scm.branch != null) {
+    } else if (taskExecutionConfig.task.scm.branch != null) {
       console.log(chalk.green('--- sha'))
-      console.dir(task.scm.branch.sha)
-      await gitCheckout(task.scm.branch.sha, dir)
-    } else if (task.scm.release != null) {
+      console.dir(taskExecutionConfig.task.scm.branch.sha)
+      await gitCheckout(taskExecutionConfig.task.scm.branch.sha, dir)
+    } else if (taskExecutionConfig.task.scm.release != null) {
       console.log(chalk.green('--- sha'))
-      console.dir(task.scm.release.sha)
-      await gitCheckout(task.scm.release.sha, dir)
+      console.dir(taskExecutionConfig.task.scm.release.sha)
+      await gitCheckout(taskExecutionConfig.task.scm.release.sha, dir)
     }
   } else {
     console.log(chalk.green('--- skipping git clone as gitClone config was not ssh or https'))
@@ -248,48 +271,49 @@ async function prepareWorkingDirectory(task) {
 
 /**
  * Return any environment parameters from the task
- * @param {*} task
+ * @param {*} taskExecutionConfig
  * @return {object} the config values
  */
-function collectEnvironment(task, workingDirectory) {
+function collectEnvironment(taskExecutionConfig, workingDirectory) {
   var environment = process.env
+  const task = taskExecutionConfig.task
   console.dir(task.config)
   if (task.config != null) {
     Object.keys(task.config).forEach(function(key) {
       console.log('--- key: ' + key)
-      environment[conf.environmentVariablePrefix + key.toUpperCase()] = task.config[key]
+      environment[taskExecutionConfig.environmentVariablePrefix + key.toUpperCase()] = task.config[key]
     })
 
     // And some common things from all events
-    environment[conf.environmentVariablePrefix + 'OWNER'] = task.owner
-    environment[conf.environmentVariablePrefix + 'REPO'] = task.repository
-    environment[conf.environmentVariablePrefix + 'BUILDNUMBER'] = task.buildNumber
-    environment[conf.environmentVariablePrefix + 'TASK'] = task.task.id
-    environment[conf.environmentVariablePrefix + 'BUILDID'] = task.buildID
-    environment[conf.environmentVariablePrefix + 'TASKID'] = task.taskID
-    environment[conf.environmentVariablePrefix + 'WORKINGDIR'] = workingDirectory
+    environment[taskExecutionConfig.environmentVariablePrefix + 'OWNER'] = task.owner
+    environment[taskExecutionConfig.environmentVariablePrefix + 'REPO'] = task.repository
+    environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDNUMBER'] = task.buildNumber
+    environment[taskExecutionConfig.environmentVariablePrefix + 'TASK'] = task.task.id
+    environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDID'] = task.buildID
+    environment[taskExecutionConfig.environmentVariablePrefix + 'TASKID'] = task.taskID
+    environment[taskExecutionConfig.environmentVariablePrefix + 'WORKINGDIR'] = workingDirectory
 
     // Now add in the event specific details, if they are available
     if (task.scm.pullRequest != null) {
-      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = 'pullrequest-' + task.scm.pullRequest.number
-      environment[conf.environmentVariablePrefix + 'PULLREQUESTNUMBER'] = task.scm.pullRequest.number
-      environment[conf.environmentVariablePrefix + 'PULLREQUESTBRANCH'] = task.scm.pullRequest.head.ref
-      environment[conf.environmentVariablePrefix + 'PULLREQUESTBASEBRANCH'] = task.scm.pullRequest.base.ref
-      environment[conf.environmentVariablePrefix + 'GITSHABASE'] = task.scm.pullRequest.base.sha
-      environment[conf.environmentVariablePrefix + 'GITSHAHEAD'] = task.scm.pullRequest.head.sha
+      environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDKEY'] = 'pullrequest-' + task.scm.pullRequest.number
+      environment[taskExecutionConfig.environmentVariablePrefix + 'PULLREQUESTNUMBER'] = task.scm.pullRequest.number
+      environment[taskExecutionConfig.environmentVariablePrefix + 'PULLREQUESTBRANCH'] = task.scm.pullRequest.head.ref
+      environment[taskExecutionConfig.environmentVariablePrefix + 'PULLREQUESTBASEBRANCH'] = task.scm.pullRequest.base.ref
+      environment[taskExecutionConfig.environmentVariablePrefix + 'GITSHABASE'] = task.scm.pullRequest.base.sha
+      environment[taskExecutionConfig.environmentVariablePrefix + 'GITSHAHEAD'] = task.scm.pullRequest.head.sha
     }
 
     if (task.scm.branch != null) {
-      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = task.scm.branch.name
-      environment[conf.environmentVariablePrefix + 'BRANCH'] = task.scm.branch.name
-      environment[conf.environmentVariablePrefix + 'GITSHA'] = task.scm.branch.sha
+      environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDKEY'] = task.scm.branch.name
+      environment[taskExecutionConfig.environmentVariablePrefix + 'BRANCH'] = task.scm.branch.name
+      environment[taskExecutionConfig.environmentVariablePrefix + 'GITSHA'] = task.scm.branch.sha
     }
 
     if (task.scm.release != null) {
-      environment[conf.environmentVariablePrefix + 'BUILDKEY'] = task.scm.release.name
-      environment[conf.environmentVariablePrefix + 'RELEASE'] = task.scm.release.name
-      environment[conf.environmentVariablePrefix + 'TAG'] = task.scm.release.tag
-      environment[conf.environmentVariablePrefix + 'GITSHA'] = task.scm.release.sha
+      environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDKEY'] = task.scm.release.name
+      environment[taskExecutionConfig.environmentVariablePrefix + 'RELEASE'] = task.scm.release.name
+      environment[taskExecutionConfig.environmentVariablePrefix + 'TAG'] = task.scm.release.tag
+      environment[taskExecutionConfig.environmentVariablePrefix + 'GITSHA'] = task.scm.release.sha
     }
   } else {
     console.log(chalk.red('--- no config found!'))
@@ -304,7 +328,6 @@ function collectEnvironment(task, workingDirectory) {
  */
 async function updateTask(task, responseQueue) {
   console.log(chalk.green('--- updating task with status: ' + task.status))
-  console.dir(task)
   responseQueue.add(task)
 }
 

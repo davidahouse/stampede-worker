@@ -9,6 +9,7 @@ yarn-error.log*
 .*rc
 startWorkers.sh
 stopWorkers.sh
+.stampedetest
 
 # Runtime data
 pids
