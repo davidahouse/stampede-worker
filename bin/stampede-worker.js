@@ -36,7 +36,7 @@ const conf = require('rc')('stampede', {
   environmentVariablePrefix: 'STAMP_',
   shell: '/bin/bash',
   gitClone: 'ssh',
-  gitCloneOptions: null,
+  gitCloneOptions: '',
   stdoutLogFile: 'stdout.log',
   stderrLogFile: null,
   // Log file configuration
