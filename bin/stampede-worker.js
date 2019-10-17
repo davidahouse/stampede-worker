@@ -5,13 +5,13 @@ const chalk = require('chalk')
 const figlet = require('figlet')
 const fs = require('fs')
 const { spawn } = require('child_process')
-const { exec } = require('child_process')
 const Queue = require('bull')
 const uuidv4 = require('uuid/v4')
 
 const queueLog = require('../lib/queueLog')
 const responseTestFile = require('../lib/responseTestFile')
 const executionConfig = require('../lib/executionConfig')
+const workingDirectory = require('../lib/workingDirectory')
 
 require('pkginfo')(module)
 
@@ -136,16 +136,27 @@ async function handleTask(task, responseQueue) {
   }
 
   // Create the working directory and prepare it
-  const workingDirectory = await prepareWorkingDirectory(taskExecutionConfig)
+  const directory = await workingDirectory.prepareWorkingDirectory(taskExecutionConfig, conf)
+  if (directory == null) {
+    console.log(chalk.red('Error getting working directory, unable to continue'))
+    task.status = 'completed'
+    task.result = {
+      conclusion: 'failure',
+      summary: 'Working directory error',
+    }
+    await updateTask(task, responseQueue)
+    workerStatus = 'idle'
+    return
+  }
 
   // Setup our environment variables
-  const environment = collectEnvironment(taskExecutionConfig, workingDirectory)
+  const environment = collectEnvironment(taskExecutionConfig, directory)
   if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
-    fs.writeFileSync(workingDirectory + '/' + conf.environmentLogFile, JSON.stringify(environment, null, 2))
+    fs.writeFileSync(directory + '/' + conf.environmentLogFile, JSON.stringify(environment, null, 2))
   }
 
   // Execute our task
-  const result = await executeTask(taskExecutionConfig, workingDirectory, environment)
+  const result = await executeTask(taskExecutionConfig, directory, environment)
   const finishedAt = new Date()
   task.stats.finishedAt = finishedAt
 
@@ -153,7 +164,7 @@ async function handleTask(task, responseQueue) {
   task.status = 'completed'
   task.result = result
   if (conf.taskDetailsLogFile != null && conf.taskDetailsLogFile.length > 0) {
-    fs.writeFileSync(workingDirectory + '/' + conf.taskDetailsLogFile, JSON.stringify(task, null, 2))
+    fs.writeFileSync(directory + '/' + conf.taskDetailsLogFile, JSON.stringify(task, null, 2))
   }
   await updateTask(task, responseQueue)
   workerStatus = 'idle'
@@ -222,54 +233,6 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
 }
 
 /**
- * prepare the working directory
- * @param {*} taskExecutionConfig
- */
-async function prepareWorkingDirectory(taskExecutionConfig) {
-  const dir = conf.workspaceRoot + '/' + taskExecutionConfig.task.taskID
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir)
-  }
-  console.log('--- working directory: ' + dir)
-
-  if (taskExecutionConfig.gitClone === 'ssh' || taskExecutionConfig.gitClone === 'https') {
-    // Do a clone into our working directory
-    console.log(chalk.green('--- performing a git clone from:'))
-    if (taskExecutionConfig.gitClone === 'ssh') {
-      console.log(chalk.green(taskExecutionConfig.task.scm.sshURL))
-      await cloneRepo(taskExecutionConfig.task.scm.sshURL, dir, taskExecutionConfig.gitCloneOptions)
-    } else if (conf.gitClone === 'https') {
-      console.log(chalk.green(taskExecutionConfig.task.scm.cloneURL))
-      await cloneRepo(taskExecutionConfig.task.scm.cloneURL, dir, taskExecutionConfig.gitCloneOptions)
-    }
-
-    // Handle pull requests differently
-    if (taskExecutionConfig.task.scm.pullRequest != null) {
-      // Now checkout our head sha
-      console.log(chalk.green('--- head'))
-      console.dir(taskExecutionConfig.task.scm.pullRequest.head)
-      await gitCheckout(taskExecutionConfig.task.scm.pullRequest.head.sha, dir)
-      // And then merge the base sha
-      console.log(chalk.green('--- base'))
-      console.dir(taskExecutionConfig.task.scm.pullRequest.base)
-      await gitMerge(taskExecutionConfig.task.scm.pullRequest.base.sha, dir)
-      // Fail if we have merge conflicts
-    } else if (taskExecutionConfig.task.scm.branch != null) {
-      console.log(chalk.green('--- sha'))
-      console.dir(taskExecutionConfig.task.scm.branch.sha)
-      await gitCheckout(taskExecutionConfig.task.scm.branch.sha, dir)
-    } else if (taskExecutionConfig.task.scm.release != null) {
-      console.log(chalk.green('--- sha'))
-      console.dir(taskExecutionConfig.task.scm.release.sha)
-      await gitCheckout(taskExecutionConfig.task.scm.release.sha, dir)
-    }
-  } else {
-    console.log(chalk.green('--- skipping git clone as gitClone config was not ssh or https'))
-  }
-  return dir
-}
-
-/**
  * Return any environment parameters from the task
  * @param {*} taskExecutionConfig
  * @return {object} the config values
@@ -281,7 +244,8 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
   if (task.config != null) {
     Object.keys(task.config).forEach(function(key) {
       console.log('--- key: ' + key)
-      environment[taskExecutionConfig.environmentVariablePrefix + key.toUpperCase()] = task.config[key]
+      const envVar = taskExecutionConfig.environmentVariablePrefix + key.toUpperCase()
+      environment[envVar] = task.config[key]
     })
 
     // And some common things from all events
@@ -329,69 +293,6 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
 async function updateTask(task, responseQueue) {
   console.log(chalk.green('--- updating task with status: ' + task.status))
   responseQueue.add(task)
-}
-
-/**
- * Clone the repository to our working directory
- * @param {*} cloneUrl
- * @param {*} workingDirectory
- */
-async function cloneRepo(cloneUrl, workingDirectory, cloneOptions) {
-  return new Promise(resolve => {
-    exec('git clone ' + cloneOptions + ' ' + cloneUrl + ' ' + workingDirectory, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`cloneRepo error: ${error}`)
-        // TODO: figure out the error reason
-        resolve(false)
-        return
-      }
-      console.log(`stdout: ${stdout}`)
-      console.log(`stderr: ${stderr}`)
-      resolve(false)
-    })
-  })
-}
-
-/**
- * Perform a git checkout of our branch
- * @param {*} sha
- * @param {*} workingDirectory
- */
-async function gitCheckout(sha, workingDirectory) {
-  return new Promise(resolve => {
-    exec('git checkout -f ' + sha, {cwd: workingDirectory}, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`gitCheckout error: ${error}`)
-        // TODO: figure out the error reason
-        resolve(false)
-        return
-      }
-      console.log(`stdout: ${stdout}`)
-      console.log(`stderr: ${stderr}`)
-      resolve(false)
-    })
-  })
-}
-
-/**
- * Now merge in the target branch
- * @param {*} sha
- * @param {*} workingDirectory
- */
-async function gitMerge(sha, workingDirectory) {
-  return new Promise(resolve => {
-    exec('git merge ' + sha, {cwd: workingDirectory}, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`gitMerge error: ${error}`)
-        // TODO: figure out the error reason
-        resolve(false)
-        return
-      }
-      console.log(`stdout: ${stdout}`)
-      console.log(`stderr: ${stderr}`)
-      resolve(false)
-    })
-  })
 }
 
 /**
