@@ -184,7 +184,7 @@ async function handleHeartbeat(queue) {
     lastTask: lastTask,
     taskQueue: conf.taskQueue,
   }
-  queue.add(heartbeat)
+  queue.add(heartbeat, {removeOnComplete: true, removeOnFail: true})
   setTimeout(handleHeartbeat, conf.heartbeatInterval, queue)
 }
 
@@ -292,7 +292,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
  */
 async function updateTask(task, responseQueue) {
   console.log(chalk.green('--- updating task with status: ' + task.status))
-  responseQueue.add(task)
+  responseQueue.add(task, {removeOnComplete: true, removeOnFail: true})
 }
 
 /**
