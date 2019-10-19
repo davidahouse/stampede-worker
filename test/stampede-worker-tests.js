@@ -1,12 +1,11 @@
-'use strict'
+'use strict';
 /* eslint-env mocha */
-const expect = require('chai').expect
+const expect = require('chai').expect;
 
 describe('Stampede Worker', function() {
-  beforeEach(() => {
-  })
+  beforeEach(() => {});
 
   it('should be tested', function() {
-    expect(true).to.equal(true)
-  })
-})
+    expect(true).to.equal(true);
+  });
+});
