@@ -1,8 +1,13 @@
-ARG config
+# Dockerfile
+
+# node image
 FROM node:8
-WORKDIR /usr/src/app
+# working folder
+WORKDIR /var/stampede
+# install app dependencies
 COPY package*.json ./
 RUN npm install
+# copy the app into the container
 COPY . .
-COPY $config /user/src/app/.stampederc 
-CMD [ "npm", "start" ]
+# run the server
+CMD ["node", "bin/stampede-worker.js"]
