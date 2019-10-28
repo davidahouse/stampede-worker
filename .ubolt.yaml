@@ -1,0 +1,6 @@
+docker-build:
+  command: docker build -t docker-worker .
+  description: Build the docker container
+docker-build-for-test:
+  command: docker build --build-arg configPath=../stampede-server-test/config -t docker-worker .
+  description: Build the docker container and supply config from server tests
