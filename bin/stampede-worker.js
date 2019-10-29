@@ -1,31 +1,31 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
-const chalk = require('chalk');
-const figlet = require('figlet');
-const fs = require('fs');
-const { spawn } = require('child_process');
-const Queue = require('bull');
-const uuidv4 = require('uuid/v4');
+const chalk = require("chalk");
+const figlet = require("figlet");
+const fs = require("fs");
+const { spawn } = require("child_process");
+const Queue = require("bull");
+const uuidv4 = require("uuid/v4");
 
-const queueLog = require('../lib/queueLog');
-const responseTestFile = require('../lib/responseTestFile');
-const executionConfig = require('../lib/executionConfig');
-const workingDirectory = require('../lib/workingDirectory');
+const queueLog = require("../lib/queueLog");
+const responseTestFile = require("../lib/responseTestFile");
+const executionConfig = require("../lib/executionConfig");
+const workingDirectory = require("../lib/workingDirectory");
 
-require('pkginfo')(module);
+require("pkginfo")(module);
 
-const conf = require('rc')('stampede', {
+const conf = require("rc")("stampede", {
   // Required configuration
-  redisHost: 'localhost',
+  redisHost: "localhost",
   redisPort: 6379,
   redisPassword: null,
   nodeName: null,
   workerName: null,
   stampedeConfigPath: null,
   stampedeScriptPath: null,
-  taskQueue: 'stampede-tasks',
-  responseQueue: 'stampede-response',
+  taskQueue: "stampede-tasks",
+  responseQueue: "stampede-response",
   workspaceRoot: null,
   // Test mode. Set both of these to enable test mode
   // where the worker will execute the task that is in the
@@ -34,18 +34,18 @@ const conf = require('rc')('stampede', {
   taskTestFile: null,
   responseTestFile: null,
   // Task defaults
-  environmentVariablePrefix: 'STAMP_',
-  shell: '/bin/bash',
-  gitClone: 'ssh',
-  gitCloneOptions: '',
-  stdoutLogFile: 'stdout.log',
+  environmentVariablePrefix: "STAMP_",
+  shell: "/bin/bash",
+  gitClone: "ssh",
+  gitCloneOptions: "",
+  stdoutLogFile: "stdout.log",
   stderrLogFile: null,
   // Log file configuration
-  environmentLogFile: 'environment.log',
-  taskDetailsLogFile: 'worker.log',
+  environmentLogFile: "environment.log",
+  taskDetailsLogFile: "worker.log",
   logQueuePath: null,
   // Heartbeat
-  heartbeatQueue: 'stampede-heartbeat',
+  heartbeatQueue: "stampede-heartbeat",
   heartbeatInterval: 15000
 });
 
@@ -57,22 +57,22 @@ const redisConfig = {
   }
 };
 const workerID = uuidv4();
-let workerStatus = 'idle';
+let workerStatus = "idle";
 let lastTask = {};
 
 console.log(
-  chalk.red(figlet.textSync('stampede', { horizontalLayout: 'full' }))
+  chalk.red(figlet.textSync("stampede", { horizontalLayout: "full" }))
 );
 console.log(chalk.yellow(module.exports.version));
-console.log(chalk.red('Redis Host: ' + conf.redisHost));
-console.log(chalk.red('Redis Port: ' + conf.redisPort));
-console.log(chalk.red('Node Name: ' + conf.nodeName));
-console.log(chalk.red('Config Path: ' + conf.stampedeConfigPath));
-console.log(chalk.red('Script Path: ' + conf.stampedeScriptPath));
-console.log(chalk.red('Task Queue: ' + conf.taskQueue));
-console.log(chalk.red('Workspace Root: ' + conf.workspaceRoot));
-console.log(chalk.red('Worker Name: ' + conf.workerName));
-console.log(chalk.red('Worker ID: ' + workerID));
+console.log(chalk.red("Redis Host: " + conf.redisHost));
+console.log(chalk.red("Redis Port: " + conf.redisPort));
+console.log(chalk.red("Node Name: " + conf.nodeName));
+console.log(chalk.red("Config Path: " + conf.stampedeConfigPath));
+console.log(chalk.red("Script Path: " + conf.stampedeScriptPath));
+console.log(chalk.red("Task Queue: " + conf.taskQueue));
+console.log(chalk.red("Workspace Root: " + conf.workspaceRoot));
+console.log(chalk.red("Worker Name: " + conf.workerName));
+console.log(chalk.red("Worker ID: " + workerID));
 
 // Check for all our required parameters
 if (
@@ -84,13 +84,13 @@ if (
   conf.workspaceRoot == null
 ) {
   console.log(
-    chalk.red('Missing required config parameters. Unable to start worker.')
+    chalk.red("Missing required config parameters. Unable to start worker.")
   );
   process.exit(1);
 }
 
 if (conf.taskTestFile == null) {
-  const workerQueue = new Queue('stampede-' + conf.taskQueue, redisConfig);
+  const workerQueue = new Queue("stampede-" + conf.taskQueue, redisConfig);
   const responseQueue = new Queue(conf.responseQueue, redisConfig);
   const heartbeatQueue =
     conf.heartbeatQueue != null
@@ -119,17 +119,17 @@ if (conf.taskTestFile == null) {
  * @param {*} task
  */
 async function handleTask(task, responseQueue) {
-  workerStatus = 'busy';
+  workerStatus = "busy";
   lastTask = task;
   const startedAt = new Date();
-  task.status = 'in_progress';
+  task.status = "in_progress";
   task.stats.startedAt = startedAt;
   task.worker = {
     node: conf.nodeName,
     version: module.exports.version,
     workerID: workerID
   };
-  console.log('--- Updating task to in progress');
+  console.log("--- Updating task to in progress");
   await updateTask(task, responseQueue);
 
   // Gather up the execution config options we will need for this task
@@ -139,14 +139,14 @@ async function handleTask(task, responseQueue) {
   );
   console.dir(taskExecutionConfig);
   if (taskExecutionConfig.error != null) {
-    console.log('--- Error getting execution config');
-    task.status = 'completed';
+    console.log("--- Error getting execution config");
+    task.status = "completed";
     task.result = {
-      conclusion: 'failure',
+      conclusion: "failure",
       summary: taskExecutionConfig.error
     };
     await updateTask(task, responseQueue);
-    workerStatus = 'idle';
+    workerStatus = "idle";
     return;
   }
 
@@ -157,25 +157,31 @@ async function handleTask(task, responseQueue) {
   );
   if (directory == null) {
     console.log(
-      chalk.red('Error getting working directory, unable to continue')
+      chalk.red("Error getting working directory, unable to continue")
     );
-    task.status = 'completed';
+    task.status = "completed";
     task.result = {
-      conclusion: 'failure',
-      summary: 'Working directory error'
+      conclusion: "failure",
+      summary: "Working directory error"
     };
     await updateTask(task, responseQueue);
-    workerStatus = 'idle';
+    workerStatus = "idle";
     return;
   }
 
   // Setup our environment variables
   const environment = collectEnvironment(taskExecutionConfig, directory);
   if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
-    fs.writeFileSync(
-      directory + '/' + conf.environmentLogFile,
-      JSON.stringify(environment, null, 2)
-    );
+    console.log("--- Writing out environment.log");
+    try {
+      let exportValues = "";
+      Object.keys(environment).forEach(function(key) {
+        exportValues += "export " + key + '="' + environment[key] + '"\n';
+      });
+      fs.writeFileSync(directory + "/" + conf.environmentLogFile, exportValues);
+    } catch (e) {
+      console.log("Error writing environment log: " + e);
+    }
   }
 
   // Execute our task
@@ -184,16 +190,16 @@ async function handleTask(task, responseQueue) {
   task.stats.finishedAt = finishedAt;
 
   // Now finalize our task status
-  task.status = 'completed';
+  task.status = "completed";
   task.result = result;
   if (conf.taskDetailsLogFile != null && conf.taskDetailsLogFile.length > 0) {
     fs.writeFileSync(
-      directory + '/' + conf.taskDetailsLogFile,
+      directory + "/" + conf.taskDetailsLogFile,
       JSON.stringify(task, null, 2)
     );
   }
   await updateTask(task, responseQueue);
-  workerStatus = 'idle';
+  workerStatus = "idle";
 }
 
 /**
@@ -224,29 +230,29 @@ async function handleHeartbeat(queue) {
 async function executeTask(taskExecutionConfig, workingDirectory, environment) {
   return new Promise(resolve => {
     const taskCommand =
-      conf.stampedeScriptPath + '/' + taskExecutionConfig.taskCommand;
-    console.log(chalk.green('--- Executing: ' + taskCommand));
+      conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
+    console.log(chalk.green("--- Executing: " + taskCommand));
 
     const stdoutlog =
       taskExecutionConfig.stdoutLogFile != null
         ? fs.openSync(
-            workingDirectory + '/' + taskExecutionConfig.stdoutLogFile,
-            'a'
+            workingDirectory + "/" + taskExecutionConfig.stdoutLogFile,
+            "a"
           )
-        : 'ignore';
+        : "ignore";
     const stderrlog =
       taskExecutionConfig.stderrLogFile != null
         ? fs.openSync(
-            workingDirectory + '/' + taskExecutionConfig.stderrLogFile,
-            'a'
+            workingDirectory + "/" + taskExecutionConfig.stderrLogFile,
+            "a"
           )
         : stdoutlog;
 
     const options = {
       cwd: workingDirectory,
       env: environment,
-      encoding: 'utf8',
-      stdio: ['ignore', stdoutlog, stderrlog],
+      encoding: "utf8",
+      stdio: ["ignore", stdoutlog, stderrlog],
       shell: taskExecutionConfig.shell
     };
 
@@ -255,27 +261,27 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
       taskExecutionConfig.taskArguments,
       options
     );
-    spawned.on('close', code => {
-      console.log(chalk.green('--- task finished: ' + code));
+    spawned.on("close", code => {
+      console.log(chalk.green("--- task finished: " + code));
       if (code !== 0) {
         const conclusion = prepareConclusion(
           workingDirectory,
-          'failure',
-          'Task results',
-          'Task Failed',
+          "failure",
+          "Task results",
+          "Task Failed",
           taskExecutionConfig.errorSummaryFile,
-          '',
+          "",
           taskExecutionConfig.errorTextFile
         );
         resolve(conclusion);
       } else {
         const conclusion = prepareConclusion(
           workingDirectory,
-          'success',
-          'Task results',
-          'Task was successful',
+          "success",
+          "Task results",
+          "Task was successful",
           taskExecutionConfig.successSummaryFile,
-          '',
+          "",
           taskExecutionConfig.successTextFile
         );
         resolve(conclusion);
@@ -295,71 +301,71 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
   console.dir(task.config);
   if (task.config != null) {
     Object.keys(task.config).forEach(function(key) {
-      console.log('--- key: ' + key);
+      console.log("--- key: " + key);
       const envVar =
         taskExecutionConfig.environmentVariablePrefix + key.toUpperCase();
       environment[envVar] = task.config[key];
     });
 
     // And some common things from all events
-    environment[taskExecutionConfig.environmentVariablePrefix + 'OWNER'] =
+    environment[taskExecutionConfig.environmentVariablePrefix + "OWNER"] =
       task.owner;
-    environment[taskExecutionConfig.environmentVariablePrefix + 'REPO'] =
+    environment[taskExecutionConfig.environmentVariablePrefix + "REPO"] =
       task.repository;
-    environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDNUMBER'] =
+    environment[taskExecutionConfig.environmentVariablePrefix + "BUILDNUMBER"] =
       task.buildNumber;
-    environment[taskExecutionConfig.environmentVariablePrefix + 'TASK'] =
+    environment[taskExecutionConfig.environmentVariablePrefix + "TASK"] =
       task.task.id;
-    environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDID'] =
+    environment[taskExecutionConfig.environmentVariablePrefix + "BUILDID"] =
       task.buildID;
-    environment[taskExecutionConfig.environmentVariablePrefix + 'TASKID'] =
+    environment[taskExecutionConfig.environmentVariablePrefix + "TASKID"] =
       task.taskID;
     environment[
-      taskExecutionConfig.environmentVariablePrefix + 'WORKINGDIR'
+      taskExecutionConfig.environmentVariablePrefix + "WORKINGDIR"
     ] = workingDirectory;
 
     // Now add in the event specific details, if they are available
     if (task.scm.pullRequest != null) {
-      environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDKEY'] =
-        'pullrequest-' + task.scm.pullRequest.number;
+      environment[taskExecutionConfig.environmentVariablePrefix + "BUILDKEY"] =
+        "pullrequest-" + task.scm.pullRequest.number;
       environment[
-        taskExecutionConfig.environmentVariablePrefix + 'PULLREQUESTNUMBER'
+        taskExecutionConfig.environmentVariablePrefix + "PULLREQUESTNUMBER"
       ] = task.scm.pullRequest.number;
       environment[
-        taskExecutionConfig.environmentVariablePrefix + 'PULLREQUESTBRANCH'
+        taskExecutionConfig.environmentVariablePrefix + "PULLREQUESTBRANCH"
       ] = task.scm.pullRequest.head.ref;
       environment[
-        taskExecutionConfig.environmentVariablePrefix + 'PULLREQUESTBASEBRANCH'
+        taskExecutionConfig.environmentVariablePrefix + "PULLREQUESTBASEBRANCH"
       ] = task.scm.pullRequest.base.ref;
       environment[
-        taskExecutionConfig.environmentVariablePrefix + 'GITSHABASE'
+        taskExecutionConfig.environmentVariablePrefix + "GITSHABASE"
       ] = task.scm.pullRequest.base.sha;
       environment[
-        taskExecutionConfig.environmentVariablePrefix + 'GITSHAHEAD'
+        taskExecutionConfig.environmentVariablePrefix + "GITSHAHEAD"
       ] = task.scm.pullRequest.head.sha;
     }
 
     if (task.scm.branch != null) {
-      environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDKEY'] =
+      environment[taskExecutionConfig.environmentVariablePrefix + "BUILDKEY"] =
         task.scm.branch.name;
-      environment[taskExecutionConfig.environmentVariablePrefix + 'BRANCH'] =
+      environment[taskExecutionConfig.environmentVariablePrefix + "BRANCH"] =
         task.scm.branch.name;
-      environment[taskExecutionConfig.environmentVariablePrefix + 'GITSHA'] =
+      environment[taskExecutionConfig.environmentVariablePrefix + "GITSHA"] =
         task.scm.branch.sha;
     }
 
     if (task.scm.release != null) {
-      environment[taskExecutionConfig.environmentVariablePrefix + 'BUILDKEY'] =
+      environment[taskExecutionConfig.environmentVariablePrefix + "BUILDKEY"] =
         task.scm.release.name;
-      environment[taskExecutionConfig.environmentVariablePrefix + 'RELEASE'] =
+      environment[taskExecutionConfig.environmentVariablePrefix + "RELEASE"] =
         task.scm.release.name;
-      environment[taskExecutionConfig.environmentVariablePrefix + 'TAG'] =
+      environment[taskExecutionConfig.environmentVariablePrefix + "TAG"] =
         task.scm.release.tag;
-      environment[taskExecutionConfig.environmentVariablePrefix + 'GITSHA'] =
+      environment[taskExecutionConfig.environmentVariablePrefix + "GITSHA"] =
         task.scm.release.sha;
     }
   } else {
-    console.log(chalk.red('--- no config found!'));
+    console.log(chalk.red("--- no config found!"));
   }
 
   return environment;
@@ -370,7 +376,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
  * @param {*} task
  */
 async function updateTask(task, responseQueue) {
-  console.log(chalk.green('--- updating task with status: ' + task.status));
+  console.log(chalk.green("--- updating task with status: " + task.status));
   responseQueue.add(task, { removeOnComplete: true, removeOnFail: true });
 }
 
@@ -396,15 +402,15 @@ async function prepareConclusion(
 ) {
   let summary = defaultSummary;
   if (summaryFile != null && summaryFile.length > 0) {
-    if (fs.existsSync(workingDirectory + '/' + summaryFile)) {
-      summary = fs.readFileSync(workingDirectory + '/' + summaryFile, 'utf8');
+    if (fs.existsSync(workingDirectory + "/" + summaryFile)) {
+      summary = fs.readFileSync(workingDirectory + "/" + summaryFile, "utf8");
     }
   }
 
   let text = defaultText;
   if (textFile != null && textFile.length > 0) {
-    if (fs.existsSync(workingDirectory + '/' + textFile)) {
-      text = fs.readFileSync(workingDirectory + '/' + textFile, 'utf8');
+    if (fs.existsSync(workingDirectory + "/" + textFile)) {
+      text = fs.readFileSync(workingDirectory + "/" + textFile, "utf8");
     }
   }
 
