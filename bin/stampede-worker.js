@@ -24,8 +24,8 @@ const conf = require("rc")("stampede", {
   workerName: null,
   stampedeConfigPath: null,
   stampedeScriptPath: null,
-  taskQueue: "stampede-tasks",
-  responseQueue: "stampede-response",
+  taskQueue: "tasks",
+  responseQueue: "response",
   workspaceRoot: null,
   // Test mode. Set both of these to enable test mode
   // where the worker will execute the task that is in the
@@ -45,7 +45,7 @@ const conf = require("rc")("stampede", {
   taskDetailsLogFile: "worker.log",
   logQueuePath: null,
   // Heartbeat
-  heartbeatQueue: "stampede-heartbeat",
+  heartbeatQueue: "heartbeat",
   heartbeatInterval: 15000
 });
 
@@ -91,10 +91,13 @@ if (
 
 if (conf.taskTestFile == null) {
   const workerQueue = new Queue("stampede-" + conf.taskQueue, redisConfig);
-  const responseQueue = new Queue(conf.responseQueue, redisConfig);
+  const responseQueue = new Queue(
+    "stampede-" + conf.responseQueue,
+    redisConfig
+  );
   const heartbeatQueue =
     conf.heartbeatQueue != null
-      ? new Queue(conf.heartbeatQueue, redisConfig)
+      ? new Queue("stampede-" + conf.heartbeatQueue, redisConfig)
       : null;
 
   workerQueue.process(function(task) {
