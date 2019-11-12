@@ -89,13 +89,14 @@ if (
   process.exit(1);
 }
 
+let workerQueue = null;
+let responseQueue = null;
+let heartbeatQueue = null;
+
 if (conf.taskTestFile == null) {
-  const workerQueue = new Queue("stampede-" + conf.taskQueue, redisConfig);
-  const responseQueue = new Queue(
-    "stampede-" + conf.responseQueue,
-    redisConfig
-  );
-  const heartbeatQueue =
+  workerQueue = new Queue("stampede-" + conf.taskQueue, redisConfig);
+  responseQueue = new Queue("stampede-" + conf.responseQueue, redisConfig);
+  heartbeatQueue =
     conf.heartbeatQueue != null
       ? new Queue("stampede-" + conf.heartbeatQueue, redisConfig)
       : null;
@@ -115,6 +116,24 @@ if (conf.taskTestFile == null) {
   const task = JSON.parse(fs.readFileSync(conf.taskTestFile));
   responseTestFile.init(conf.responseTestFile);
   handleTask(task, responseTestFile);
+}
+
+/**
+ * Handle shutdown gracefully
+ */
+process.on("SIGINT", function() {
+  gracefulShutdown();
+});
+
+/**
+ * gracefulShutdown
+ */
+async function gracefulShutdown() {
+  console.log("Closing queues");
+  await workerQueue.close();
+  await responseQueue.close();
+  await heartbeatQueue.close();
+  process.exit(0);
 }
 
 /**
