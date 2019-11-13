@@ -4,3 +4,11 @@ docker-build:
 docker-build-for-test:
   command: docker build --build-arg configPath=../stampede-server-test/config -t docker-worker .
   description: Build the docker container and supply config from server tests
+newversion:
+  commands:
+    - npm --no-git-tag-version version $1
+    - npm install
+  description: Update the package.json with a new version
+version:
+  command: npm view stampede-worker version
+  description: Show the current version of the package
