@@ -45,7 +45,6 @@ const conf = require("rc")("stampede", {
   taskDetailsLogFile: "worker.log",
   logQueuePath: null,
   // Heartbeat
-  heartbeatQueue: "heartbeat",
   heartbeatInterval: 15000
 });
 
@@ -91,15 +90,10 @@ if (
 
 let workerQueue = null;
 let responseQueue = null;
-let heartbeatQueue = null;
 
 if (conf.taskTestFile == null) {
   workerQueue = new Queue("stampede-" + conf.taskQueue, redisConfig);
   responseQueue = new Queue("stampede-" + conf.responseQueue, redisConfig);
-  heartbeatQueue =
-    conf.heartbeatQueue != null
-      ? new Queue("stampede-" + conf.heartbeatQueue, redisConfig)
-      : null;
 
   workerQueue.process(function(task) {
     // Save the message if our logQueuePath is set
@@ -109,8 +103,8 @@ if (conf.taskTestFile == null) {
     return handleTask(task.data, responseQueue);
   });
 
-  if (heartbeatQueue != null) {
-    handleHeartbeat(heartbeatQueue);
+  if (responseQueue != null) {
+    handleHeartbeat(responseQueue);
   }
 } else {
   const task = JSON.parse(fs.readFileSync(conf.taskTestFile));
@@ -132,7 +126,6 @@ async function gracefulShutdown() {
   console.log("Closing queues");
   await workerQueue.close();
   await responseQueue.close();
-  await heartbeatQueue.close();
   process.exit(0);
 }
 
@@ -226,7 +219,6 @@ async function handleTask(task, responseQueue) {
 
 /**
  * send out a heartbeat notification
- * @param {*} queue
  */
 async function handleHeartbeat(queue) {
   const heartbeat = {
@@ -239,7 +231,13 @@ async function handleHeartbeat(queue) {
     lastTask: lastTask,
     taskQueue: conf.taskQueue
   };
-  queue.add(heartbeat, { removeOnComplete: true, removeOnFail: true });
+  queue.add(
+    {
+      response: "heartbeat",
+      payload: heartbeat
+    },
+    { removeOnComplete: true, removeOnFail: true }
+  );
   setTimeout(handleHeartbeat, conf.heartbeatInterval, queue);
 }
 
@@ -399,7 +397,10 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
  */
 async function updateTask(task, responseQueue) {
   console.log(chalk.green("--- updating task with status: " + task.status));
-  responseQueue.add(task, { removeOnComplete: true, removeOnFail: true });
+  responseQueue.add(
+    { response: "taskUpdate", payload: task },
+    { removeOnComplete: true, removeOnFail: true }
+  );
 }
 
 /**
