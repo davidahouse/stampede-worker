@@ -326,7 +326,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
       console.log("--- key: " + key);
       const envVar =
         taskExecutionConfig.environmentVariablePrefix + key.toUpperCase();
-      environment[envVar] = task.config[key];
+      environment[envVar] = task.config[key].value;
     });
 
     // And some common things from all events
