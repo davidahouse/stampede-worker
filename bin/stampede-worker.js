@@ -7,6 +7,7 @@ const fs = require("fs");
 const { spawn } = require("child_process");
 const Queue = require("bull");
 const uuidv4 = require("uuid/v4");
+const logFileReader = require("log-file-reader");
 
 const queueLog = require("../lib/queueLog");
 const responseTestFile = require("../lib/responseTestFile");
@@ -426,14 +427,22 @@ async function prepareConclusion(
   let summary = defaultSummary;
   if (summaryFile != null && summaryFile.length > 0) {
     if (fs.existsSync(workingDirectory + "/" + summaryFile)) {
-      summary = fs.readFileSync(workingDirectory + "/" + summaryFile, "utf8");
+      const results = await logFileReader.parseLog(
+        workingDirectory + "/" + summaryFile,
+        { lastKB: 63000 }
+      );
+      summary = results.map(x => x.line).join("\n");
     }
   }
 
   let text = defaultText;
   if (textFile != null && textFile.length > 0) {
     if (fs.existsSync(workingDirectory + "/" + textFile)) {
-      text = fs.readFileSync(workingDirectory + "/" + textFile, "utf8");
+      const results = await logFileReader.parseLog(
+        workingDirectory + "/" + textFile,
+        { lastKB: 63000 }
+      );
+      text = results.map(x => x.line).join("\n");
     }
   }
 
