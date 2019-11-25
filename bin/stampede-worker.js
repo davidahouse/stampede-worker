@@ -252,6 +252,19 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
   return new Promise(resolve => {
     const taskCommand =
       conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
+    if (!fs.existsSync(taskCommand)) {
+      const conclusion = prepareConclusion(
+        workingDirectory,
+        "failure",
+        "Task results",
+        "Task configured incorrectly, contact your stampede admin.",
+        null,
+        "",
+        null
+      );
+      resolve(conclusion);
+      return;
+    }
     console.log(chalk.green("--- Executing: " + taskCommand));
 
     const stdoutlog =
