@@ -26,7 +26,7 @@
     "rc": "^1.2.8",
     "redis": "^2.8.0",
     "uuid": "^3.3.2",
-    "log-file-reader": "^0.1.0"
+    "log-file-reader": "^0.1.1"
   },
   "devDependencies": {
     "chai": "^4.2.0",
