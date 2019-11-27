@@ -135,87 +135,102 @@ async function gracefulShutdown() {
  * @param {*} task
  */
 async function handleTask(task, responseQueue) {
-  workerStatus = "busy";
-  lastTask = task;
-  const startedAt = new Date();
-  task.status = "in_progress";
-  task.stats.startedAt = startedAt;
-  task.worker = {
-    node: conf.nodeName,
-    version: module.exports.version,
-    workerID: workerID
-  };
-  console.log("--- Updating task to in progress");
-  await updateTask(task, responseQueue);
-
-  // Gather up the execution config options we will need for this task
-  const taskExecutionConfig = await executionConfig.prepareExecutionConfig(
-    task,
-    conf
-  );
-  console.dir(taskExecutionConfig);
-  if (taskExecutionConfig.error != null) {
-    console.log("--- Error getting execution config");
-    task.status = "completed";
-    task.result = {
-      conclusion: "failure",
-      summary: taskExecutionConfig.error
+  try {
+    workerStatus = "busy";
+    lastTask = task;
+    const startedAt = new Date();
+    task.status = "in_progress";
+    task.stats.startedAt = startedAt;
+    task.worker = {
+      node: conf.nodeName,
+      version: module.exports.version,
+      workerID: workerID
     };
+    console.log("--- Updating task to in progress");
     await updateTask(task, responseQueue);
-    workerStatus = "idle";
-    return;
-  }
 
-  // Create the working directory and prepare it
-  const directory = await workingDirectory.prepareWorkingDirectory(
-    taskExecutionConfig,
-    conf
-  );
-  if (directory == null) {
-    console.log(
-      chalk.red("Error getting working directory, unable to continue")
+    // Gather up the execution config options we will need for this task
+    const taskExecutionConfig = await executionConfig.prepareExecutionConfig(
+      task,
+      conf
     );
-    task.status = "completed";
-    task.result = {
-      conclusion: "failure",
-      summary: "Working directory error"
-    };
-    await updateTask(task, responseQueue);
-    workerStatus = "idle";
-    return;
-  }
-
-  // Setup our environment variables
-  const environment = collectEnvironment(taskExecutionConfig, directory);
-  if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
-    console.log("--- Writing out environment.log");
-    try {
-      let exportValues = "";
-      Object.keys(environment).forEach(function(key) {
-        exportValues += "export " + key + '="' + environment[key] + '"\n';
-      });
-      fs.writeFileSync(directory + "/" + conf.environmentLogFile, exportValues);
-    } catch (e) {
-      console.log("Error writing environment log: " + e);
+    console.dir(taskExecutionConfig);
+    if (taskExecutionConfig.error != null) {
+      console.log("--- Error getting execution config");
+      task.status = "completed";
+      task.result = {
+        conclusion: "failure",
+        summary: taskExecutionConfig.error
+      };
+      await updateTask(task, responseQueue);
+      workerStatus = "idle";
+      return;
     }
-  }
 
-  // Execute our task
-  const result = await executeTask(taskExecutionConfig, directory, environment);
-  const finishedAt = new Date();
-  task.stats.finishedAt = finishedAt;
-
-  // Now finalize our task status
-  task.status = "completed";
-  task.result = result;
-  if (conf.taskDetailsLogFile != null && conf.taskDetailsLogFile.length > 0) {
-    fs.writeFileSync(
-      directory + "/" + conf.taskDetailsLogFile,
-      JSON.stringify(task, null, 2)
+    // Create the working directory and prepare it
+    const directory = await workingDirectory.prepareWorkingDirectory(
+      taskExecutionConfig,
+      conf
     );
+    if (directory == null) {
+      console.log(
+        chalk.red("Error getting working directory, unable to continue")
+      );
+      task.status = "completed";
+      task.result = {
+        conclusion: "failure",
+        summary: "Working directory error"
+      };
+      await updateTask(task, responseQueue);
+      workerStatus = "idle";
+      return;
+    }
+
+    // Setup our environment variables
+    const environment = collectEnvironment(taskExecutionConfig, directory);
+    if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
+      console.log("--- Writing out environment.log");
+      try {
+        let exportValues = "";
+        Object.keys(environment).forEach(function(key) {
+          exportValues += "export " + key + '="' + environment[key] + '"\n';
+        });
+        fs.writeFileSync(
+          directory + "/" + conf.environmentLogFile,
+          exportValues
+        );
+      } catch (e) {
+        console.log("Error writing environment log: " + e);
+      }
+    }
+
+    // Execute our task
+    const result = await executeTask(
+      taskExecutionConfig,
+      directory,
+      environment
+    );
+    console.log("--- Updating task record to capture completed state");
+    const finishedAt = new Date();
+    task.stats.finishedAt = finishedAt;
+
+    // Now finalize our task status
+    task.status = "completed";
+    task.result = result;
+    if (conf.taskDetailsLogFile != null && conf.taskDetailsLogFile.length > 0) {
+      console.log("--- Writing out worker.log file");
+      fs.writeFileSync(
+        directory + "/" + conf.taskDetailsLogFile,
+        JSON.stringify(task, null, 2)
+      );
+    }
+    console.log("--- Updating task");
+    await updateTask(task, responseQueue);
+    workerStatus = "idle";
+    console.log("--- handle task completed");
+  } catch (e) {
+    console.log(chalk.red("--- Error in handle task " + e));
   }
-  await updateTask(task, responseQueue);
-  workerStatus = "idle";
 }
 
 /**
@@ -300,6 +315,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
         console.log(chalk.green("--- task finished: " + code));
         try {
           if (code !== 0) {
+            console.log(chalk.red("--- Task failed, preparing conclusion"));
             const conclusion = prepareConclusion(
               workingDirectory,
               "failure",
@@ -311,6 +327,9 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
             );
             resolve(conclusion);
           } else {
+            console.log(
+              chalk.green("--- Task succeeded, preparing conclusion")
+            );
             const conclusion = prepareConclusion(
               workingDirectory,
               "success",
@@ -323,6 +342,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
             resolve(conclusion);
           }
         } catch (e) {
+          console.log(chalk.red("Exception handling task close event: " + e));
           resolve({
             conclusion: "failure",
             title: "Task results",
@@ -332,6 +352,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
         }
       });
     } catch (e) {
+      console.log(chalk.red("Exception handling task: " + e));
       resolve({
         conclusion: "failure",
         title: "Task results",
