@@ -250,77 +250,95 @@ async function handleHeartbeat(queue) {
  */
 async function executeTask(taskExecutionConfig, workingDirectory, environment) {
   return new Promise(resolve => {
-    const taskCommand =
-      conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
-    if (!fs.existsSync(taskCommand)) {
-      const conclusion = prepareConclusion(
-        workingDirectory,
-        "failure",
-        "Task results",
-        "Task configured incorrectly, contact your stampede admin.",
-        null,
-        "",
-        null
-      );
-      resolve(conclusion);
-      return;
-    }
-    console.log(chalk.green("--- Executing: " + taskCommand));
-
-    const stdoutlog =
-      taskExecutionConfig.stdoutLogFile != null
-        ? fs.openSync(
-            workingDirectory + "/" + taskExecutionConfig.stdoutLogFile,
-            "a"
-          )
-        : "ignore";
-    const stderrlog =
-      taskExecutionConfig.stderrLogFile != null
-        ? fs.openSync(
-            workingDirectory + "/" + taskExecutionConfig.stderrLogFile,
-            "a"
-          )
-        : stdoutlog;
-
-    const options = {
-      cwd: workingDirectory,
-      env: environment,
-      encoding: "utf8",
-      stdio: ["ignore", stdoutlog, stderrlog],
-      shell: taskExecutionConfig.shell
-    };
-
-    const spawned = spawn(
-      taskCommand,
-      taskExecutionConfig.taskArguments,
-      options
-    );
-    spawned.on("close", code => {
-      console.log(chalk.green("--- task finished: " + code));
-      if (code !== 0) {
+    try {
+      const taskCommand =
+        conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
+      if (!fs.existsSync(taskCommand)) {
         const conclusion = prepareConclusion(
           workingDirectory,
           "failure",
           "Task results",
-          "Task Failed",
-          taskExecutionConfig.errorSummaryFile,
+          "Task configured incorrectly, contact your stampede admin.",
+          null,
           "",
-          taskExecutionConfig.errorTextFile
+          null
         );
         resolve(conclusion);
-      } else {
-        const conclusion = prepareConclusion(
-          workingDirectory,
-          "success",
-          "Task results",
-          "Task was successful",
-          taskExecutionConfig.successSummaryFile,
-          "",
-          taskExecutionConfig.successTextFile
-        );
-        resolve(conclusion);
+        return;
       }
-    });
+      console.log(chalk.green("--- Executing: " + taskCommand));
+
+      const stdoutlog =
+        taskExecutionConfig.stdoutLogFile != null
+          ? fs.openSync(
+              workingDirectory + "/" + taskExecutionConfig.stdoutLogFile,
+              "a"
+            )
+          : "ignore";
+      const stderrlog =
+        taskExecutionConfig.stderrLogFile != null
+          ? fs.openSync(
+              workingDirectory + "/" + taskExecutionConfig.stderrLogFile,
+              "a"
+            )
+          : stdoutlog;
+
+      const options = {
+        cwd: workingDirectory,
+        env: environment,
+        encoding: "utf8",
+        stdio: ["ignore", stdoutlog, stderrlog],
+        shell: taskExecutionConfig.shell
+      };
+
+      const spawned = spawn(
+        taskCommand,
+        taskExecutionConfig.taskArguments,
+        options
+      );
+      spawned.on("close", code => {
+        console.log(chalk.green("--- task finished: " + code));
+        try {
+          if (code !== 0) {
+            const conclusion = prepareConclusion(
+              workingDirectory,
+              "failure",
+              "Task results",
+              "Task Failed",
+              taskExecutionConfig.errorSummaryFile,
+              "",
+              taskExecutionConfig.errorTextFile
+            );
+            resolve(conclusion);
+          } else {
+            const conclusion = prepareConclusion(
+              workingDirectory,
+              "success",
+              "Task results",
+              "Task was successful",
+              taskExecutionConfig.successSummaryFile,
+              "",
+              taskExecutionConfig.successTextFile
+            );
+            resolve(conclusion);
+          }
+        } catch (e) {
+          resolve({
+            conclusion: "failure",
+            title: "Task results",
+            summary: "Task failed due to internal error",
+            text: e.toString()
+          });
+        }
+      });
+    } catch (e) {
+      resolve({
+        conclusion: "failure",
+        title: "Task results",
+        summary: "Task failed due to internal error",
+        text: e.toString()
+      });
+    }
   });
 }
 
