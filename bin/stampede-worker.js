@@ -41,6 +41,7 @@ const conf = require("rc")("stampede", {
   gitCloneOptions: "",
   stdoutLogFile: "stdout.log",
   stderrLogFile: null,
+  taskTimeout: 1800000, // Default timeout: 30 minutes
   // Log file configuration
   environmentLogFile: "environment.log",
   taskDetailsLogFile: "worker.log",
@@ -59,6 +60,9 @@ const redisConfig = {
 const workerID = uuidv4();
 let workerStatus = "idle";
 let lastTask = {};
+let currentSpawnedTask = null;
+let currentTaskStartTime = null;
+let currentTaskTimeout = conf.taskTimeout;
 
 console.log(
   chalk.red(figlet.textSync("stampede", { horizontalLayout: "full" }))
@@ -210,6 +214,8 @@ async function handleTask(task, responseQueue) {
       directory,
       environment
     );
+    currentSpawnedTask = null;
+    currentTaskStartTime = null;
     console.log("--- Updating task record to capture completed state");
     const finishedAt = new Date();
     task.stats.finishedAt = finishedAt;
@@ -254,6 +260,20 @@ async function handleHeartbeat(queue) {
     },
     { removeOnComplete: true, removeOnFail: true }
   );
+
+  // Check for stalled task execution and kill it if necessary
+  if (currentTaskStartTime != null) {
+    let duration = new Date() - currentTaskStartTime;
+    if (duration > currentTaskTimeout) {
+      console.log(
+        chalk.red("--- Task timeout reached! Killing spawned process")
+      );
+      currentSpawnedTask.kill();
+      currentTaskStartTime = null;
+      currentTaskTimeout = conf.taskTimeout;
+    }
+  }
+
   setTimeout(handleHeartbeat, conf.heartbeatInterval, queue);
 }
 
@@ -269,15 +289,12 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
       const taskCommand =
         conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
       if (!fs.existsSync(taskCommand)) {
-        const conclusion = prepareConclusion(
-          workingDirectory,
-          "failure",
-          "Task results",
-          "Task configured incorrectly, contact your stampede admin.",
-          null,
-          "",
-          null
-        );
+        const conclusion = {
+          conclusion: "failure",
+          title: "Task results",
+          summary: "Task configured incorrectly, contact your stampede admin.",
+          text: ""
+        };
         resolve(conclusion);
         return;
       }
@@ -306,40 +323,42 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
         shell: taskExecutionConfig.shell
       };
 
-      const spawned = spawn(
+      currentTaskStartTime = new Date();
+      currentTaskTimeout = taskExecutionConfig.taskTimeout;
+      currentSpawnedTask = spawn(
         taskCommand,
         taskExecutionConfig.taskArguments,
         options
       );
-      spawned.on("close", code => {
+      currentSpawnedTask.on("close", code => {
         console.log(chalk.green("--- task finished: " + code));
         try {
           if (code !== 0) {
             console.log(chalk.red("--- Task failed, preparing conclusion"));
-            const conclusion = prepareConclusion(
+            prepareConclusion(
               workingDirectory,
               "failure",
               "Task results",
-              "Task Failed",
+              code == null ? "Task timeout" : "Task Failed",
               taskExecutionConfig.errorSummaryFile,
               "",
-              taskExecutionConfig.errorTextFile
+              taskExecutionConfig.errorTextFile,
+              resolve
             );
-            resolve(conclusion);
           } else {
             console.log(
               chalk.green("--- Task succeeded, preparing conclusion")
             );
-            const conclusion = prepareConclusion(
+            prepareConclusion(
               workingDirectory,
               "success",
               "Task results",
               "Task was successful",
               taskExecutionConfig.successSummaryFile,
               "",
-              taskExecutionConfig.successTextFile
+              taskExecutionConfig.successTextFile,
+              resolve
             );
-            resolve(conclusion);
           }
         } catch (e) {
           console.log(chalk.red("Exception handling task close event: " + e));
@@ -474,7 +493,8 @@ async function prepareConclusion(
   defaultSummary,
   summaryFile,
   defaultText,
-  textFile
+  textFile,
+  resolve
 ) {
   let summary = defaultSummary;
   if (summaryFile != null && summaryFile.length > 0) {
@@ -498,5 +518,10 @@ async function prepareConclusion(
     }
   }
 
-  return { conclusion: conclusion, title: title, summary: summary, text: text };
+  resolve({
+    conclusion: conclusion,
+    title: title,
+    summary: summary,
+    text: text
+  });
 }
