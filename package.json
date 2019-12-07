@@ -7,7 +7,7 @@
     "test": "mocha",
     "lint": "eslint -f codeframe --ignore-path .gitignore .",
     "lint-fix": "eslint --fix --ignore-path .gitignore .",
-    "start": "nodemon bin/stampede-worker.js"
+    "dev": "nodemon bin/stampede-portal.js"
   },
   "bin": {
     "stampede-worker": "bin/stampede-worker.js"
