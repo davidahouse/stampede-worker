@@ -388,7 +388,15 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
  * @return {object} the config values
  */
 function collectEnvironment(taskExecutionConfig, workingDirectory) {
-  var environment = process.env;
+  var environment = {};
+  // Remove any STAMP_ environment variables since they shouldn't be
+  // a part of this execution
+  Object.keys(process.env).forEach(function(key) {
+    if (!key.startsWith(environmentVariablePrefix)) {
+      environment[key] = process.env[key];
+    }
+  });
+
   const task = taskExecutionConfig.task;
   console.dir(task.config);
   if (task.config != null) {
