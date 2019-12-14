@@ -392,7 +392,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
   // Remove any STAMP_ environment variables since they shouldn't be
   // a part of this execution
   Object.keys(process.env).forEach(function(key) {
-    if (!key.startsWith(environmentVariablePrefix)) {
+    if (!key.startsWith(taskExecutionConfig.environmentVariablePrefix)) {
       environment[key] = process.env[key];
     }
   });
