@@ -23,7 +23,6 @@ const conf = require("rc")("stampede", {
   redisPassword: null,
   nodeName: null,
   workerName: null,
-  stampedeConfigPath: null,
   stampedeScriptPath: null,
   taskQueue: "tasks",
   responseQueue: "response",
@@ -71,8 +70,6 @@ console.log(chalk.yellow(module.exports.version));
 console.log(chalk.red("Redis Host: " + conf.redisHost));
 console.log(chalk.red("Redis Port: " + conf.redisPort));
 console.log(chalk.red("Node Name: " + conf.nodeName));
-console.log(chalk.red("Config Path: " + conf.stampedeConfigPath));
-console.log(chalk.red("Script Path: " + conf.stampedeScriptPath));
 console.log(chalk.red("Task Queue: " + conf.taskQueue));
 console.log(chalk.red("Workspace Root: " + conf.workspaceRoot));
 console.log(chalk.red("Worker Name: " + conf.workerName));
@@ -83,7 +80,6 @@ if (
   conf.redisHost == null ||
   conf.redisPort == null ||
   conf.nodeName == null ||
-  conf.stampedeConfigPath == null ||
   conf.stampedeScriptPath == null ||
   conf.workspaceRoot == null
 ) {
