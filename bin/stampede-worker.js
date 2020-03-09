@@ -280,102 +280,150 @@ async function handleHeartbeat(queue) {
  * @param {*} environment
  */
 async function executeTask(taskExecutionConfig, workingDirectory, environment) {
-  return new Promise(resolve => {
-    try {
-      const taskCommand =
-        conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
-      if (!fs.existsSync(taskCommand)) {
-        const conclusion = {
-          conclusion: "failure",
-          title: "Task results",
-          summary: "Task configured incorrectly, contact your stampede admin.",
-          text: ""
-        };
-        resolve(conclusion);
-        return;
-      }
-      console.log(chalk.green("--- Executing: " + taskCommand));
-
-      const stdoutlog =
-        taskExecutionConfig.stdoutLogFile != null
-          ? fs.openSync(
-              workingDirectory + "/" + taskExecutionConfig.stdoutLogFile,
-              "a"
-            )
-          : "ignore";
-      const stderrlog =
-        taskExecutionConfig.stderrLogFile != null
-          ? fs.openSync(
-              workingDirectory + "/" + taskExecutionConfig.stderrLogFile,
-              "a"
-            )
-          : stdoutlog;
-
-      const options = {
-        cwd: workingDirectory,
-        env: environment,
-        encoding: "utf8",
-        stdio: ["ignore", stdoutlog, stderrlog],
-        shell: taskExecutionConfig.shell
-      };
-
-      currentTaskStartTime = new Date();
-      currentTaskTimeout = taskExecutionConfig.taskTimeout;
-      currentSpawnedTask = spawn(
-        taskCommand,
-        taskExecutionConfig.taskArguments,
-        options
-      );
-      currentSpawnedTask.on("close", code => {
-        console.log(chalk.green("--- task finished: " + code));
-        try {
-          if (code !== 0) {
-            console.log(chalk.red("--- Task failed, preparing conclusion"));
-            prepareConclusion(
-              workingDirectory,
-              "failure",
-              "Task results",
-              code == null ? "Task timeout" : "Task Failed",
-              taskExecutionConfig.errorSummaryFile,
-              "",
-              taskExecutionConfig.errorTextFile,
-              resolve
-            );
-          } else {
-            console.log(
-              chalk.green("--- Task succeeded, preparing conclusion")
-            );
-            prepareConclusion(
-              workingDirectory,
-              "success",
-              "Task results",
-              "Task was successful",
-              taskExecutionConfig.successSummaryFile,
-              "",
-              taskExecutionConfig.successTextFile,
-              resolve
-            );
-          }
-        } catch (e) {
-          console.log(chalk.red("Exception handling task close event: " + e));
-          resolve({
+  if (taskExecutionConfig.taskCommand.endsWith(".js")) {
+    return executeJavaScriptTask(taskExecutionConfig, workingDirectory);
+  } else {
+    return new Promise(resolve => {
+      try {
+        const taskCommand =
+          conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
+        if (!fs.existsSync(taskCommand)) {
+          const conclusion = {
             conclusion: "failure",
             title: "Task results",
-            summary: "Task failed due to internal error",
-            text: e.toString()
-          });
+            summary:
+              "Task configured incorrectly, contact your stampede admin.",
+            text: ""
+          };
+          resolve(conclusion);
+          return;
         }
-      });
-    } catch (e) {
-      console.log(chalk.red("Exception handling task: " + e));
-      resolve({
+        console.log(chalk.green("--- Executing: " + taskCommand));
+
+        const stdoutlog =
+          taskExecutionConfig.stdoutLogFile != null
+            ? fs.openSync(
+                workingDirectory + "/" + taskExecutionConfig.stdoutLogFile,
+                "a"
+              )
+            : "ignore";
+        const stderrlog =
+          taskExecutionConfig.stderrLogFile != null
+            ? fs.openSync(
+                workingDirectory + "/" + taskExecutionConfig.stderrLogFile,
+                "a"
+              )
+            : stdoutlog;
+
+        const options = {
+          cwd: workingDirectory,
+          env: environment,
+          encoding: "utf8",
+          stdio: ["ignore", stdoutlog, stderrlog],
+          shell: taskExecutionConfig.shell
+        };
+
+        currentTaskStartTime = new Date();
+        currentTaskTimeout = taskExecutionConfig.taskTimeout;
+        currentSpawnedTask = spawn(
+          taskCommand,
+          taskExecutionConfig.taskArguments,
+          options
+        );
+        currentSpawnedTask.on("close", code => {
+          console.log(chalk.green("--- task finished: " + code));
+          try {
+            if (code !== 0) {
+              console.log(chalk.red("--- Task failed, preparing conclusion"));
+              prepareConclusion(
+                workingDirectory,
+                "failure",
+                "Task results",
+                code == null ? "Task timeout" : "Task Failed",
+                taskExecutionConfig.errorSummaryFile,
+                "",
+                taskExecutionConfig.errorTextFile,
+                resolve
+              );
+            } else {
+              console.log(
+                chalk.green("--- Task succeeded, preparing conclusion")
+              );
+              prepareConclusion(
+                workingDirectory,
+                "success",
+                "Task results",
+                "Task was successful",
+                taskExecutionConfig.successSummaryFile,
+                "",
+                taskExecutionConfig.successTextFile,
+                resolve
+              );
+            }
+          } catch (e) {
+            console.log(chalk.red("Exception handling task close event: " + e));
+            resolve({
+              conclusion: "failure",
+              title: "Task results",
+              summary: "Task failed due to internal error",
+              text: e.toString()
+            });
+          }
+        });
+      } catch (e) {
+        console.log(chalk.red("Exception handling task: " + e));
+        resolve({
+          conclusion: "failure",
+          title: "Task results",
+          summary: "Task failed due to internal error",
+          text: e.toString()
+        });
+      }
+    });
+  }
+}
+
+/**
+ * execute the task and capture any results
+ * @param {*} taskExecutionConfig
+ * @param {*} workingDirectory
+ * @param {*} environment
+ */
+async function executeJavaScriptTask(taskExecutionConfig, workingDirectory) {
+  const taskCommand =
+    conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
+  try {
+    if (!fs.existsSync(taskCommand)) {
+      const conclusion = {
         conclusion: "failure",
         title: "Task results",
-        summary: "Task failed due to internal error",
-        text: e.toString()
-      });
+        summary: "Task configured incorrectly, contact your stampede admin.",
+        text: ""
+      };
+      return conclusion;
     }
-  });
+    console.log(chalk.green("--- Executing: " + taskCommand));
+    const taskModule = require(`${taskCommand}`);
+    const result = await taskModule.execute(
+      taskExecutionConfig,
+      workingDirectory
+    );
+    if (require.cache[require.resolve(taskCommand)] != null) {
+      delete require.cache[require.resolve(taskCommand)];
+    }
+    return result;
+  } catch (e) {
+    console.log(chalk.red("Exception handling task: " + e));
+    if (require.cache[require.resolve(taskCommand)] != null) {
+      delete require.cache[require.resolve(taskCommand)];
+    }
+    return {
+      conclusion: "failure",
+      title: "Task results",
+      summary: "Task failed due to internal error",
+      text: e.toString()
+    };
+  }
 }
 
 /**
