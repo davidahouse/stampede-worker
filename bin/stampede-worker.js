@@ -8,6 +8,7 @@ const { spawn } = require("child_process");
 const Queue = require("bull");
 const uuidv4 = require("uuid/v4");
 const logFileReader = require("log-file-reader");
+const winston = require("winston");
 
 const queueLog = require("../lib/queueLog");
 const responseTestFile = require("../lib/responseTestFile");
@@ -403,11 +404,30 @@ async function executeJavaScriptTask(taskExecutionConfig, workingDirectory) {
       return conclusion;
     }
     console.log(chalk.green("--- Executing: " + taskCommand));
+
+    const logger = winston.createLogger({
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.align(),
+        winston.format.printf(
+          info => `${info.timestamp} ${info.level}: ${info.message}`
+        )
+      ),
+      transports: [
+        new winston.transports.File({
+          filename: workingDirectory + "/" + taskExecutionConfig.stdoutLogFile
+        })
+      ]
+    });
+
     const taskModule = require(`${taskCommand}`);
     const result = await taskModule.execute(
       taskExecutionConfig,
-      workingDirectory
+      workingDirectory,
+      logger
     );
+    logger.end();
+
     if (require.cache[require.resolve(taskCommand)] != null) {
       delete require.cache[require.resolve(taskCommand)];
     }
