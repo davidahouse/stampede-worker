@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 "use strict";
 
-const chalk = require("chalk");
 const figlet = require("figlet");
 const fs = require("fs");
 const { spawn } = require("child_process");
@@ -28,6 +27,7 @@ const conf = require("rc")("stampede", {
   taskQueue: "tasks",
   responseQueue: "response",
   workspaceRoot: null,
+  logLevel: "info",
   // Test mode. Set both of these to enable test mode
   // where the worker will execute the task that is in the
   // taskTestFile, and the results will go into the
@@ -50,6 +50,22 @@ const conf = require("rc")("stampede", {
   heartbeatInterval: 15000
 });
 
+// Configure winston logging
+const logFormat = winston.format.combine(
+  winston.format.colorize(),
+  winston.format.timestamp(),
+  winston.format.align(),
+  winston.format.printf(
+    info => `${info.timestamp} ${info.level}: ${info.message}`
+  )
+);
+
+const logger = winston.createLogger({
+  level: conf.logLevel,
+  format: logFormat,
+  transports: [new winston.transports.Console()]
+});
+
 const redisConfig = {
   redis: {
     port: conf.redisPort,
@@ -64,17 +80,15 @@ let currentSpawnedTask = null;
 let currentTaskStartTime = null;
 let currentTaskTimeout = conf.taskTimeout;
 
-console.log(
-  chalk.red(figlet.textSync("stampede", { horizontalLayout: "full" }))
-);
-console.log(chalk.yellow(module.exports.version));
-console.log(chalk.red("Redis Host: " + conf.redisHost));
-console.log(chalk.red("Redis Port: " + conf.redisPort));
-console.log(chalk.red("Node Name: " + conf.nodeName));
-console.log(chalk.red("Task Queue: " + conf.taskQueue));
-console.log(chalk.red("Workspace Root: " + conf.workspaceRoot));
-console.log(chalk.red("Worker Name: " + conf.workerName));
-console.log(chalk.red("Worker ID: " + workerID));
+logger.info(figlet.textSync("stampede", { horizontalLayout: "full" }));
+logger.info(module.exports.version);
+logger.info("Redis Host: " + conf.redisHost);
+logger.info("Redis Port: " + conf.redisPort);
+logger.info("Node Name: " + conf.nodeName);
+logger.info("Task Queue: " + conf.taskQueue);
+logger.info("Workspace Root: " + conf.workspaceRoot);
+logger.info("Worker Name: " + conf.workerName);
+logger.info("Worker ID: " + workerID);
 
 // Check for all our required parameters
 if (
@@ -84,9 +98,7 @@ if (
   conf.stampedeScriptPath == null ||
   conf.workspaceRoot == null
 ) {
-  console.log(
-    chalk.red("Missing required config parameters. Unable to start worker.")
-  );
+  logger.error("Missing required config parameters. Unable to start worker.");
   process.exit(1);
 }
 
@@ -125,7 +137,7 @@ process.on("SIGINT", function() {
  * gracefulShutdown
  */
 async function gracefulShutdown() {
-  console.log("Closing queues");
+  logger.info("Closing queues");
   await workerQueue.close();
   await responseQueue.close();
   process.exit(0);
@@ -136,6 +148,7 @@ async function gracefulShutdown() {
  * @param {*} task
  */
 async function handleTask(task, responseQueue) {
+  logger.info("Handling task: " + task.taskID);
   try {
     workerStatus = "busy";
     lastTask = task;
@@ -147,17 +160,18 @@ async function handleTask(task, responseQueue) {
       version: module.exports.version,
       workerID: workerID
     };
-    console.log("--- Updating task to in progress");
+    logger.verbose("Updating task to in progress");
     await updateTask(task, responseQueue);
 
     // Gather up the execution config options we will need for this task
     const taskExecutionConfig = await executionConfig.prepareExecutionConfig(
       task,
-      conf
+      conf,
+      logger
     );
-    console.dir(taskExecutionConfig);
+    logger.verbose(JSON.stringify(taskExecutionConfig, null, 2));
     if (taskExecutionConfig.error != null) {
-      console.log("--- Error getting execution config");
+      logger.error(" Error getting execution config");
       task.status = "completed";
       task.result = {
         conclusion: "failure",
@@ -171,12 +185,11 @@ async function handleTask(task, responseQueue) {
     // Create the working directory and prepare it
     const directory = await workingDirectory.prepareWorkingDirectory(
       taskExecutionConfig,
-      conf
+      conf,
+      logger
     );
     if (directory == null) {
-      console.log(
-        chalk.red("Error getting working directory, unable to continue")
-      );
+      logger.error("Error getting working directory, unable to continue");
       task.status = "completed";
       task.result = {
         conclusion: "failure",
@@ -190,7 +203,7 @@ async function handleTask(task, responseQueue) {
     // Setup our environment variables
     const environment = collectEnvironment(taskExecutionConfig, directory);
     if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
-      console.log("--- Writing out environment.log");
+      logger.verbose("Writing out environment.log");
       try {
         let exportValues = "";
         Object.keys(environment).forEach(function(key) {
@@ -201,7 +214,7 @@ async function handleTask(task, responseQueue) {
           exportValues
         );
       } catch (e) {
-        console.log("Error writing environment log: " + e);
+        logger.error("Error writing environment log: " + e);
       }
     }
 
@@ -213,7 +226,7 @@ async function handleTask(task, responseQueue) {
     );
     currentSpawnedTask = null;
     currentTaskStartTime = null;
-    console.log("--- Updating task record to capture completed state");
+    logger.verbose("Updating task record to capture completed state");
     const finishedAt = new Date();
     task.stats.finishedAt = finishedAt;
 
@@ -221,18 +234,18 @@ async function handleTask(task, responseQueue) {
     task.status = "completed";
     task.result = result;
     if (conf.taskDetailsLogFile != null && conf.taskDetailsLogFile.length > 0) {
-      console.log("--- Writing out worker.log file");
+      logger.verbose("Writing out worker.log file");
       fs.writeFileSync(
         directory + "/" + conf.taskDetailsLogFile,
         JSON.stringify(task, null, 2)
       );
     }
-    console.log("--- Updating task");
+    logger.verbose("Updating task");
     await updateTask(task, responseQueue);
     workerStatus = "idle";
-    console.log("--- handle task completed");
+    logger.verbose("handle task completed");
   } catch (e) {
-    console.log(chalk.red("--- Error in handle task " + e));
+    logger.error(" Error in handle task " + e);
   }
 }
 
@@ -262,9 +275,7 @@ async function handleHeartbeat(queue) {
   if (currentTaskStartTime != null) {
     let duration = new Date() - currentTaskStartTime;
     if (duration > currentTaskTimeout) {
-      console.log(
-        chalk.red("--- Task timeout reached! Killing spawned process")
-      );
+      logger.error(" Task timeout reached! Killing spawned process");
       currentSpawnedTask.kill();
       currentTaskStartTime = null;
       currentTaskTimeout = conf.taskTimeout;
@@ -299,7 +310,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
           resolve(conclusion);
           return;
         }
-        console.log(chalk.green("--- Executing: " + taskCommand));
+        logger.info("Executing: " + taskCommand);
 
         const stdoutlog =
           taskExecutionConfig.stdoutLogFile != null
@@ -332,10 +343,10 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
           options
         );
         currentSpawnedTask.on("close", code => {
-          console.log(chalk.green("--- task finished: " + code));
+          logger.info("task finished: " + code);
           try {
             if (code !== 0) {
-              console.log(chalk.red("--- Task failed, preparing conclusion"));
+              logger.error(" Task failed, preparing conclusion");
               prepareConclusion(
                 workingDirectory,
                 "failure",
@@ -347,9 +358,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
                 resolve
               );
             } else {
-              console.log(
-                chalk.green("--- Task succeeded, preparing conclusion")
-              );
+              logger.info("Task succeeded, preparing conclusion");
               prepareConclusion(
                 workingDirectory,
                 "success",
@@ -362,7 +371,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
               );
             }
           } catch (e) {
-            console.log(chalk.red("Exception handling task close event: " + e));
+            logger.error("Exception handling task close event: " + e);
             resolve({
               conclusion: "failure",
               title: "Task results",
@@ -372,7 +381,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
           }
         });
       } catch (e) {
-        console.log(chalk.red("Exception handling task: " + e));
+        logger.error("Exception handling task: " + e);
         resolve({
           conclusion: "failure",
           title: "Task results",
@@ -403,9 +412,9 @@ async function executeJavaScriptTask(taskExecutionConfig, workingDirectory) {
       };
       return conclusion;
     }
-    console.log(chalk.green("--- Executing: " + taskCommand));
+    logger.info("Executing: " + taskCommand);
 
-    const logger = winston.createLogger({
+    const taskLogger = winston.createLogger({
       format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.align(),
@@ -424,16 +433,16 @@ async function executeJavaScriptTask(taskExecutionConfig, workingDirectory) {
     const result = await taskModule.execute(
       taskExecutionConfig,
       workingDirectory,
-      logger
+      taskLogger
     );
-    logger.end();
+    taskLogger.end();
 
     if (require.cache[require.resolve(taskCommand)] != null) {
       delete require.cache[require.resolve(taskCommand)];
     }
     return result;
   } catch (e) {
-    console.log(chalk.red("Exception handling task: " + e));
+    logger.error("Exception handling task: " + e);
     if (require.cache[require.resolve(taskCommand)] != null) {
       delete require.cache[require.resolve(taskCommand)];
     }
@@ -462,10 +471,10 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
   });
 
   const task = taskExecutionConfig.task;
-  console.dir(task.config);
+  logger.verbose(JSON.stringify(task.config, null, 2));
   if (task.config != null) {
     Object.keys(task.config).forEach(function(key) {
-      console.log("--- key: " + key);
+      logger.verbose("key: " + key);
       const envVar =
         taskExecutionConfig.environmentVariablePrefix + key.toUpperCase();
       environment[envVar] = task.config[key].value;
@@ -541,7 +550,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
         task.scm.release.sha;
     }
   } else {
-    console.log(chalk.red("--- no config found!"));
+    logger.info("no config found!");
   }
 
   return environment;
@@ -552,7 +561,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
  * @param {*} task
  */
 async function updateTask(task, responseQueue) {
-  console.log(chalk.green("--- updating task with status: " + task.status));
+  logger.info("updating task with status: " + task.status);
   responseQueue.add(
     { response: "taskUpdate", payload: task },
     { removeOnComplete: true, removeOnFail: true }
