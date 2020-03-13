@@ -22,11 +22,12 @@
     "eslint-config-prettier": "^6.4.0",
     "figlet": "^1.2.1",
     "js-yaml": "^3.13.1",
+    "log-file-reader": "^0.1.1",
     "pkginfo": "^0.4.1",
     "rc": "^1.2.8",
     "redis": "^2.8.0",
     "uuid": "^3.3.2",
-    "log-file-reader": "^0.1.1"
+    "winston": "^3.2.1"
   },
   "devDependencies": {
     "chai": "^4.2.0",
