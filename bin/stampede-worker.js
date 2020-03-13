@@ -427,6 +427,7 @@ async function executeJavaScriptTask(taskExecutionConfig, workingDirectory) {
       logger
     );
     logger.end();
+
     if (require.cache[require.resolve(taskCommand)] != null) {
       delete require.cache[require.resolve(taskCommand)];
     }
