@@ -17,9 +17,7 @@
   "dependencies": {
     "better-queue": "^3.8.10",
     "bull": "^3.10.0",
-    "chalk": "^2.4.2",
     "clear": "^0.1.0",
-    "eslint-config-prettier": "^6.4.0",
     "figlet": "^1.2.1",
     "js-yaml": "^3.13.1",
     "log-file-reader": "^0.1.1",
@@ -32,6 +30,7 @@
   "devDependencies": {
     "chai": "^4.2.0",
     "eslint": "^6.3.0",
+    "eslint-config-prettier": "^6.4.0",
     "eslint-config-strongloop": "^2.1.0",
     "mocha": "^5.2.0",
     "mock-require": "^3.0.3"
