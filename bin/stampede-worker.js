@@ -516,18 +516,6 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
       environment[
         taskExecutionConfig.environmentVariablePrefix + "GITSHAHEAD"
       ] = task.scm.pullRequest.head.sha;
-      environment[taskExecutionConfig.environmentVariablePrefix + "PRTITLE"] =
-        task.scm.pullRequest.title;
-      environment[
-        taskExecutionConfig.environmentVariablePrefix + "PRBODYLENGTH"
-      ] = task.scm.pullRequest.bodyLength;
-      environment[
-        taskExecutionConfig.environmentVariablePrefix + "PRMILESTONE"
-      ] = task.scm.pullRequest.milestone;
-      environment[taskExecutionConfig.environmentVariablePrefix + "PRLABELS"] =
-        task.scm.pullRequest.labels != null
-          ? task.scm.pullRequest.labels.join(",")
-          : "";
     }
 
     if (task.scm.branch != null) {
