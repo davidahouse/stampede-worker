@@ -45,6 +45,7 @@ const conf = require("rc")("stampede", {
   // Log file configuration
   environmentLogFile: "environment.log",
   taskDetailsLogFile: "worker.log",
+  releaseBodyFile: "releasebody.txt",
   logQueuePath: null,
   // Heartbeat
   heartbeatInterval: 15000
@@ -215,6 +216,23 @@ async function handleTask(task, responseQueue) {
         );
       } catch (e) {
         logger.error("Error writing environment log: " + e);
+      }
+    }
+
+    // Write out release body if found
+    if (
+      conf.releaseBodyFile != null &&
+      taskExecutionConfig.task.scm.release != null &&
+      taskExecutionConfig.task.scm.release.body != null
+    ) {
+      logger.verbose("Writing out release body");
+      try {
+        fs.writeFileSync(
+          directory + "/" + conf.releaseBodyFile,
+          taskExecutionConfig.task.scm.release.body
+        );
+      } catch (e) {
+        logger.error("Error writing release body: " + e);
       }
     }
 
