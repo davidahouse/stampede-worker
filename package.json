@@ -1,6 +1,6 @@
 {
   "name": "stampede-worker",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "A centralized job queue system",
   "main": "bin/stampede-worker.js",
   "scripts": {
