@@ -514,6 +514,8 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
     environment[
       taskExecutionConfig.environmentVariablePrefix + "WORKINGDIR"
     ] = workingDirectory;
+    environment[taskExecutionConfig.environmentVariablePrefix + "ACCESSTOKEN"] =
+      task.scm.accessToken;
 
     // Now add in the event specific details, if they are available
     if (task.scm.pullRequest != null) {
