@@ -8,6 +8,7 @@ const Queue = require("bull");
 const uuidv4 = require("uuid/v4");
 const logFileReader = require("log-file-reader");
 const winston = require("winston");
+const csv = require("csv-parser");
 
 const queueLog = require("../lib/queueLog");
 const responseTestFile = require("../lib/responseTestFile");
@@ -42,13 +43,14 @@ const conf = require("rc")("stampede", {
   stdoutLogFile: "stdout.log",
   stderrLogFile: null,
   taskTimeout: 1800000, // Default timeout: 30 minutes
+  artifactListFile: "artifacts.csv",
   // Log file configuration
   environmentLogFile: "environment.log",
   taskDetailsLogFile: "worker.log",
   releaseBodyFile: "releasebody.txt",
   logQueuePath: null,
   // Heartbeat
-  heartbeatInterval: 15000
+  heartbeatInterval: 15000,
 });
 
 // Configure winston logging
@@ -57,22 +59,22 @@ const logFormat = winston.format.combine(
   winston.format.timestamp(),
   winston.format.align(),
   winston.format.printf(
-    info => `${info.timestamp} ${info.level}: ${info.message}`
+    (info) => `${info.timestamp} ${info.level}: ${info.message}`
   )
 );
 
 const logger = winston.createLogger({
   level: conf.logLevel,
   format: logFormat,
-  transports: [new winston.transports.Console()]
+  transports: [new winston.transports.Console()],
 });
 
 const redisConfig = {
   redis: {
     port: conf.redisPort,
     host: conf.redisHost,
-    password: conf.redisPassword
-  }
+    password: conf.redisPassword,
+  },
 };
 const workerID = uuidv4();
 let workerStatus = "idle";
@@ -110,7 +112,7 @@ if (conf.taskTestFile == null) {
   workerQueue = new Queue("stampede-" + conf.taskQueue, redisConfig);
   responseQueue = new Queue("stampede-" + conf.responseQueue, redisConfig);
 
-  workerQueue.process(function(task) {
+  workerQueue.process(function (task) {
     // Save the message if our logQueuePath is set
     if (conf.logQueuePath != null) {
       queueLog.save(conf.taskQueue, task.data, conf.logQueuePath);
@@ -130,7 +132,7 @@ if (conf.taskTestFile == null) {
 /**
  * Handle shutdown gracefully
  */
-process.on("SIGINT", function() {
+process.on("SIGINT", function () {
   gracefulShutdown();
 });
 
@@ -159,7 +161,7 @@ async function handleTask(task, responseQueue) {
     task.worker = {
       node: conf.nodeName,
       version: module.exports.version,
-      workerID: workerID
+      workerID: workerID,
     };
     logger.verbose("Updating task to in progress");
     await updateTask(task, responseQueue);
@@ -176,7 +178,7 @@ async function handleTask(task, responseQueue) {
       task.status = "completed";
       task.result = {
         conclusion: "failure",
-        summary: taskExecutionConfig.error
+        summary: taskExecutionConfig.error,
       };
       await updateTask(task, responseQueue);
       workerStatus = "idle";
@@ -194,7 +196,7 @@ async function handleTask(task, responseQueue) {
       task.status = "completed";
       task.result = {
         conclusion: "failure",
-        summary: "Working directory error"
+        summary: "Working directory error",
       };
       await updateTask(task, responseQueue);
       workerStatus = "idle";
@@ -207,7 +209,7 @@ async function handleTask(task, responseQueue) {
       logger.verbose("Writing out environment.log");
       try {
         let exportValues = "";
-        Object.keys(environment).forEach(function(key) {
+        Object.keys(environment).forEach(function (key) {
           exportValues += "export " + key + '="' + environment[key] + '"\n';
         });
         fs.writeFileSync(
@@ -279,12 +281,12 @@ async function handleHeartbeat(queue) {
     workerID: workerID,
     status: workerStatus,
     lastTask: lastTask,
-    taskQueue: conf.taskQueue
+    taskQueue: conf.taskQueue,
   };
   queue.add(
     {
       response: "heartbeat",
-      payload: heartbeat
+      payload: heartbeat,
     },
     { removeOnComplete: true, removeOnFail: true }
   );
@@ -313,7 +315,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
   if (taskExecutionConfig.taskCommand.endsWith(".js")) {
     return executeJavaScriptTask(taskExecutionConfig, workingDirectory);
   } else {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       try {
         const taskCommand =
           conf.stampedeScriptPath + "/" + taskExecutionConfig.taskCommand;
@@ -323,7 +325,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
             title: "Task results",
             summary:
               "Task configured incorrectly, contact your stampede admin.",
-            text: ""
+            text: "",
           };
           resolve(conclusion);
           return;
@@ -350,7 +352,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
           env: environment,
           encoding: "utf8",
           stdio: ["ignore", stdoutlog, stderrlog],
-          shell: taskExecutionConfig.shell
+          shell: taskExecutionConfig.shell,
         };
 
         currentTaskStartTime = new Date();
@@ -360,7 +362,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
           taskExecutionConfig.taskArguments,
           options
         );
-        currentSpawnedTask.on("close", code => {
+        currentSpawnedTask.on("close", (code) => {
           logger.info("task finished: " + code);
           try {
             if (code !== 0) {
@@ -373,6 +375,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
                 taskExecutionConfig.errorSummaryFile,
                 "",
                 taskExecutionConfig.errorTextFile,
+                taskExecutionConfig.artifactListFile,
                 resolve
               );
             } else {
@@ -385,6 +388,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
                 taskExecutionConfig.successSummaryFile,
                 "",
                 taskExecutionConfig.successTextFile,
+                taskExecutionConfig.artifactListFile,
                 resolve
               );
             }
@@ -394,7 +398,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
               conclusion: "failure",
               title: "Task results",
               summary: "Task failed due to internal error",
-              text: e.toString()
+              text: e.toString(),
             });
           }
         });
@@ -404,7 +408,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
           conclusion: "failure",
           title: "Task results",
           summary: "Task failed due to internal error",
-          text: e.toString()
+          text: e.toString(),
         });
       }
     });
@@ -426,7 +430,7 @@ async function executeJavaScriptTask(taskExecutionConfig, workingDirectory) {
         conclusion: "failure",
         title: "Task results",
         summary: "Task configured incorrectly, contact your stampede admin.",
-        text: ""
+        text: "",
       };
       return conclusion;
     }
@@ -437,14 +441,14 @@ async function executeJavaScriptTask(taskExecutionConfig, workingDirectory) {
         winston.format.timestamp(),
         winston.format.align(),
         winston.format.printf(
-          info => `${info.timestamp} ${info.level}: ${info.message}`
+          (info) => `${info.timestamp} ${info.level}: ${info.message}`
         )
       ),
       transports: [
         new winston.transports.File({
-          filename: workingDirectory + "/" + taskExecutionConfig.stdoutLogFile
-        })
-      ]
+          filename: workingDirectory + "/" + taskExecutionConfig.stdoutLogFile,
+        }),
+      ],
     });
 
     const taskModule = require(`${taskCommand}`);
@@ -468,7 +472,7 @@ async function executeJavaScriptTask(taskExecutionConfig, workingDirectory) {
       conclusion: "failure",
       title: "Task results",
       summary: "Task failed due to internal error",
-      text: e.toString()
+      text: e.toString(),
     };
   }
 }
@@ -482,7 +486,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
   var environment = {};
   // Remove any STAMP_ environment variables since they shouldn't be
   // a part of this execution
-  Object.keys(process.env).forEach(function(key) {
+  Object.keys(process.env).forEach(function (key) {
     if (!key.startsWith(taskExecutionConfig.environmentVariablePrefix)) {
       environment[key] = process.env[key];
     }
@@ -491,7 +495,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
   const task = taskExecutionConfig.task;
   logger.verbose(JSON.stringify(task.config, null, 2));
   if (task.config != null) {
-    Object.keys(task.config).forEach(function(key) {
+    Object.keys(task.config).forEach(function (key) {
       logger.verbose("key: " + key);
       const envVar =
         taskExecutionConfig.environmentVariablePrefix + key.toUpperCase();
@@ -585,6 +589,7 @@ async function updateTask(task, responseQueue) {
  * @param {*} summaryFile
  * @param {*} defaultText
  * @param {*} textFile
+ * @param {*} artifactListFile
  * @return {*} The conclusion object to set in our task details
  */
 async function prepareConclusion(
@@ -595,6 +600,7 @@ async function prepareConclusion(
   summaryFile,
   defaultText,
   textFile,
+  artifactListFile,
   resolve
 ) {
   let summary = defaultSummary;
@@ -604,7 +610,7 @@ async function prepareConclusion(
         workingDirectory + "/" + summaryFile,
         { lastKB: 63000 }
       );
-      summary = results.map(x => x.line).join("\n");
+      summary = results.map((x) => x.line).join("\n");
     }
   }
 
@@ -615,7 +621,17 @@ async function prepareConclusion(
         workingDirectory + "/" + textFile,
         { lastKB: 63000 }
       );
-      text = results.map(x => x.line).join("\n");
+      text = results.map((x) => x.line).join("\n");
+    }
+  }
+
+  let artifacts = [];
+  if (artifactListFile != null && artifactListFile.length > 0) {
+    if (fs.existsSync(workingDirectory + "/" + artifactListFile)) {
+      const foundArtifacts = await parseArtifactsCSV(
+        workingDirectory + "/" + artifactListFile
+      );
+      artifacts = foundArtifacts;
     }
   }
 
@@ -623,6 +639,23 @@ async function prepareConclusion(
     conclusion: conclusion,
     title: title,
     summary: summary,
-    text: text
+    text: text,
+    artifacts: artifacts,
+  });
+}
+
+/**
+ * parseArtifactsCSV
+ * @param {*} csvFile
+ */
+async function parseArtifactsCSV(csvFile) {
+  return new Promise((resolve) => {
+    const artifacts = [];
+    fs.createReadStream(csvFile)
+      .pipe(csv(["title", "url", "type"]))
+      .on("data", (data) => artifacts.push(data))
+      .on("end", () => {
+        resolve(artifacts);
+      });
   });
 }
