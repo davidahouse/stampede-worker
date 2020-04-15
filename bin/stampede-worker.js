@@ -38,7 +38,7 @@ const conf = require("rc")("stampede", {
   // Task defaults
   environmentVariablePrefix: "STAMP_",
   shell: "/bin/bash",
-  gitClone: "ssh",
+  gitClone: "https",
   gitCloneOptions: "",
   stdoutLogFile: "stdout.log",
   stderrLogFile: null,
