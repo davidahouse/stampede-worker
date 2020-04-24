@@ -180,8 +180,7 @@ async function handleTask(task, responseQueue) {
         conclusion: "failure",
         summary: taskExecutionConfig.error,
       };
-      const finishedAt = new Date();
-      task.stats.finishedAt = finishedAt;
+      task.stats.finishedAt = new Date();
       await updateTask(task, responseQueue);
       workerStatus = "idle";
       return;
@@ -200,8 +199,7 @@ async function handleTask(task, responseQueue) {
         conclusion: "failure",
         summary: "Working directory error",
       };
-      const finishedAt = new Date();
-      task.stats.finishedAt = finishedAt;
+      task.stats.finishedAt = new Date();
       await updateTask(task, responseQueue);
       workerStatus = "idle";
       return;
