@@ -45,7 +45,6 @@ const conf = require("rc")("stampede", {
   taskTimeout: 1800000, // Default timeout: 30 minutes
   artifactListFile: "artifacts.csv",
   // Log file configuration
-  environmentLogFile: "environment.log",
   taskDetailsLogFile: "worker.log",
   releaseBodyFile: "releasebody.txt",
   logQueuePath: null,
@@ -207,20 +206,16 @@ async function handleTask(task, responseQueue) {
 
     // Setup our environment variables
     const environment = collectEnvironment(taskExecutionConfig, directory);
-    if (conf.environmentLogFile != null && conf.environmentLogFile.length > 0) {
-      logger.verbose("Writing out environment.log");
-      try {
-        let exportValues = "";
-        Object.keys(environment).forEach(function (key) {
-          exportValues += "export " + key + '="' + environment[key] + '"\n';
-        });
-        fs.writeFileSync(
-          directory + "/" + conf.environmentLogFile,
-          exportValues
-        );
-      } catch (e) {
-        logger.error("Error writing environment log: " + e);
-      }
+    try {
+      let exportValues = "";
+      Object.keys(environment).forEach(function (key) {
+        if (key.startsWith(taskExecutionConfig.environmentVariablePrefix)) {
+          exportValues += key + "=" + environment[key] + "\n";
+        }
+      });
+      fs.writeFileSync(directory + "/.env", exportValues);
+    } catch (e) {
+      logger.error("Error writing environment log: " + e);
     }
 
     // Write out release body if found
