@@ -203,6 +203,7 @@ async function handleTask(task, responseQueue) {
       workerStatus = "idle";
       return;
     }
+    task.worker.directory = directory;
 
     // Setup our environment variables
     const environment = collectEnvironment(taskExecutionConfig, directory);
