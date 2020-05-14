@@ -202,7 +202,55 @@ async function handleTask(task, responseQueue) {
       await updateTask(task, responseQueue);
       workerStatus = "idle";
       return;
+    } else if (directory === "mkdir-error") {
+      logger.error("Error creating working directory");
+      task.status = "completed";
+      task.result = {
+        conclusion: "failure",
+        summary:
+          "Unable to create working directory, please contact the service desk and report the issue.",
+      };
+      task.stats.finishedAt = new Date();
+      await updateTask(task, responseQueue);
+      workerStatus = "idle";
+      return;
+    } else if (directory === "clone-error") {
+      logger.error("Error cloning repository");
+      task.status = "completed";
+      task.result = {
+        conclusion: "failure",
+        summary:
+          "Unable to clone the repository, please contact the service desk and report the issue.",
+      };
+      task.stats.finishedAt = new Date();
+      await updateTask(task, responseQueue);
+      workerStatus = "idle";
+      return;
+    } else if (directory === "checkout-error") {
+      logger.error("Error checking out commit");
+      task.status = "completed";
+      task.result = {
+        conclusion: "failure",
+        summary: "Unable to perform a git checkout to this git commit",
+      };
+      task.stats.finishedAt = new Date();
+      await updateTask(task, responseQueue);
+      workerStatus = "idle";
+      return;
+    } else if (directory === "merge-error") {
+      logger.error("Error merging from base branch");
+      task.status = "completed";
+      task.result = {
+        conclusion: "failure",
+        summary:
+          "Unable to merge from the base branch, solve the merge conflict so the task can run.",
+      };
+      task.stats.finishedAt = new Date();
+      await updateTask(task, responseQueue);
+      workerStatus = "idle";
+      return;
     }
+
     task.worker.directory = directory;
 
     // Setup our environment variables
