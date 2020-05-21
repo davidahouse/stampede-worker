@@ -191,59 +191,12 @@ async function handleTask(task, responseQueue) {
       conf,
       logger
     );
-    if (directory == null) {
-      logger.error("Error getting working directory, unable to continue");
+    if (directory.error != null) {
+      logger.error(directory.message);
       task.status = "completed";
       task.result = {
         conclusion: "failure",
-        summary: "Working directory error",
-      };
-      task.stats.finishedAt = new Date();
-      await updateTask(task, responseQueue);
-      workerStatus = "idle";
-      return;
-    } else if (directory === "mkdir-error") {
-      logger.error("Error creating working directory");
-      task.status = "completed";
-      task.result = {
-        conclusion: "failure",
-        summary:
-          "Unable to create working directory, please contact the service desk and report the issue.",
-      };
-      task.stats.finishedAt = new Date();
-      await updateTask(task, responseQueue);
-      workerStatus = "idle";
-      return;
-    } else if (directory === "clone-error") {
-      logger.error("Error cloning repository");
-      task.status = "completed";
-      task.result = {
-        conclusion: "failure",
-        summary:
-          "Unable to clone the repository, please contact the service desk and report the issue.",
-      };
-      task.stats.finishedAt = new Date();
-      await updateTask(task, responseQueue);
-      workerStatus = "idle";
-      return;
-    } else if (directory === "checkout-error") {
-      logger.error("Error checking out commit");
-      task.status = "completed";
-      task.result = {
-        conclusion: "failure",
-        summary: "Unable to perform a git checkout to this git commit",
-      };
-      task.stats.finishedAt = new Date();
-      await updateTask(task, responseQueue);
-      workerStatus = "idle";
-      return;
-    } else if (directory === "merge-error") {
-      logger.error("Error merging from base branch");
-      task.status = "completed";
-      task.result = {
-        conclusion: "failure",
-        summary:
-          "Unable to merge from the base branch, solve the merge conflict so the task can run.",
+        summary: directory.message,
       };
       task.stats.finishedAt = new Date();
       await updateTask(task, responseQueue);
@@ -251,7 +204,13 @@ async function handleTask(task, responseQueue) {
       return;
     }
 
-    task.worker.directory = directory;
+    task.worker.directory = directory.directory;
+    if (directory.sha != null) {
+      task.scm.branch.sha = directory.sha;
+    }
+    if (directory.commit != null) {
+      task.scm.commitMessage = directory.commit;
+    }
 
     // Setup our environment variables
     const environment = collectEnvironment(taskExecutionConfig, directory);
