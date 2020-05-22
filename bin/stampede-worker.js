@@ -186,17 +186,17 @@ async function handleTask(task, responseQueue) {
     }
 
     // Create the working directory and prepare it
-    const directory = await workingDirectory.prepareWorkingDirectory(
+    const prepareDirectory = await workingDirectory.prepareWorkingDirectory(
       taskExecutionConfig,
       conf,
       logger
     );
-    if (directory.error != null) {
-      logger.error(directory.message);
+    if (prepareDirectory.error != null) {
+      logger.error(prepareDirectory.message);
       task.status = "completed";
       task.result = {
         conclusion: "failure",
-        summary: directory.message,
+        summary: prepareDirectory.message,
       };
       task.stats.finishedAt = new Date();
       await updateTask(task, responseQueue);
@@ -204,12 +204,13 @@ async function handleTask(task, responseQueue) {
       return;
     }
 
-    task.worker.directory = directory.directory;
-    if (directory.sha != null) {
-      task.scm.branch.sha = directory.sha;
+    const directory = prepareDirectory.directory;
+    task.worker.directory = prepareDirectory.directory;
+    if (prepareDirectory.sha != null) {
+      task.scm.branch.sha = prepareDirectory.sha;
     }
-    if (directory.commit != null) {
-      task.scm.commitMessage = directory.commit;
+    if (prepareDirectory.commit != null) {
+      task.scm.commitMessage = prepareDirectory.commit;
     }
 
     // Setup our environment variables
