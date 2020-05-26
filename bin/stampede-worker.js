@@ -40,6 +40,7 @@ const conf = require("rc")("stampede", {
   shell: "/bin/bash",
   gitClone: "https",
   gitCloneOptions: "",
+  gitMerge: false,
   stdoutLogFile: "stdout.log",
   stderrLogFile: null,
   taskTimeout: 1800000, // Default timeout: 30 minutes
