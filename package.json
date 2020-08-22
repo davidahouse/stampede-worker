@@ -18,7 +18,7 @@
     "better-queue": "^3.8.10",
     "bull": "^3.10.0",
     "clear": "^0.1.0",
-    "csv-parser": "^2.3.2",
+    "csv-parser": "^2.3.3",
     "figlet": "^1.2.1",
     "git-last-commit": "^1.0.0",
     "js-yaml": "^3.13.1",
