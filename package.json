@@ -16,7 +16,7 @@
   "license": "MIT",
   "dependencies": {
     "better-queue": "^3.8.10",
-    "bull": "^3.10.0",
+    "bull": "^3.16.0",
     "clear": "^0.1.0",
     "csv-parser": "^2.3.2",
     "figlet": "^1.2.1",
