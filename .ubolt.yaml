@@ -12,3 +12,6 @@ newversion:
 version:
   command: npm view stampede-worker version
   description: Show the current version of the package
+runlocal:
+  command: bin/stampede-worker.js --config .stampederc-local
+  description: Run worker locally against test docker containers

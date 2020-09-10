@@ -82,6 +82,7 @@ let lastTask = {};
 let currentSpawnedTask = null;
 let currentTaskStartTime = null;
 let currentTaskTimeout = conf.taskTimeout;
+let pendingShutdown = false;
 
 logger.info(figlet.textSync("stampede", { horizontalLayout: "full" }));
 logger.info(module.exports.version);
@@ -136,14 +137,24 @@ process.on("SIGINT", function () {
   gracefulShutdown();
 });
 
+process.on("SIGHUP", function () {
+  gracefulShutdown();
+});
+
 /**
  * gracefulShutdown
  */
 async function gracefulShutdown() {
-  logger.info("Closing queues");
-  await workerQueue.close();
-  await responseQueue.close();
-  process.exit(0);
+  if (currentSpawnedTask != null) {
+    pendingShutdown = true;
+  } else {
+    logger.info("Closing worker queue");
+    await workerQueue.close();
+    logger.info("Closing response queue");
+    await responseQueue.close();
+    logger.info("Done");
+    process.exit(0);
+  }
 }
 
 /**
@@ -253,6 +264,17 @@ async function handleTask(task, responseQueue) {
     );
     currentSpawnedTask = null;
     currentTaskStartTime = null;
+
+    // If we kill the task due to a pending shutdown then just close our worker queue and return
+    // so that the task will get re-queued
+    if (pendingShutdown == true) {
+      task.status = "queued";
+      task.stats.startedAt = null;
+      await updateTask(task, responseQueue);
+      await workerQueue.close();
+      return;
+    }
+
     logger.verbose("Updating task record to capture completed state");
     const finishedAt = new Date();
     task.stats.finishedAt = finishedAt;
@@ -306,6 +328,20 @@ async function handleHeartbeat(queue) {
       currentSpawnedTask.kill();
       currentTaskStartTime = null;
       currentTaskTimeout = conf.taskTimeout;
+    }
+  }
+
+  // If we are trying to shutdown during a task execution, go ahead and kill the task
+  if (pendingShutdown == true) {
+    if (currentSpawnedTask != null) {
+      currentSpawnedTask.kill();
+      currentTaskStartTime = null;
+      currentTaskTimeout = conf.taskTimeout;
+    } else {
+      logger.info("Closing response queue");
+      await responseQueue.close();
+      logger.info("Done");
+      process.exit(0);
     }
   }
 
