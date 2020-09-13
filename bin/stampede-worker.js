@@ -289,6 +289,52 @@ async function handleTask(task, responseQueue) {
         JSON.stringify(task, null, 2)
       );
     }
+
+    // Load any metadata pointed to by an artifact
+    if (task.result.artifacts != null) {
+      for (let aindex = 0; aindex < task.result.artifacts.length; aindex++) {
+        if (task.result.artifacts[aindex].metadata_file != null) {
+          try {
+            const metadata = JSON.parse(
+              fs.readFileSync(
+                directory + "/" + task.result.artifacts[aindex].metadata_file
+              )
+            );
+            task.result.artifacts[aindex].metadata = metadata;
+          } catch (e) {
+            logger.error(
+              "Error reading metadata json file: " +
+                directory +
+                "/" +
+                task.result.artifacts[aindex].metadata_file +
+                " " +
+                e
+            );
+          }
+        }
+
+        if (task.result.artifacts[aindex].contents_file != null) {
+          try {
+            const contents = JSON.parse(
+              fs.readFileSync(
+                directory + "/" + task.result.artifacts[aindex].contents_file
+              )
+            );
+            task.result.artifacts[aindex].contents = contents;
+          } catch (e) {
+            logger.error(
+              "Error reading contents json file: " +
+                directory +
+                "/" +
+                task.result.artifacts[aindex].contents_file +
+                " " +
+                e
+            );
+          }
+        }
+      }
+    }
+
     logger.verbose("Updating task");
     await updateTask(task, responseQueue);
     workerStatus = "idle";
@@ -695,7 +741,7 @@ async function parseArtifactsCSV(csvFile) {
   return new Promise((resolve) => {
     const artifacts = [];
     fs.createReadStream(csvFile)
-      .pipe(csv(["title", "url", "type"]))
+      .pipe(csv(["title", "url", "type", "metadata_file", "contents_file"]))
       .on("data", (data) => artifacts.push(data))
       .on("end", () => {
         resolve(artifacts);
