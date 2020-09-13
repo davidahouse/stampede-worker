@@ -294,21 +294,43 @@ async function handleTask(task, responseQueue) {
     if (task.result.artifacts != null) {
       for (let aindex = 0; aindex < task.result.artifacts.length; aindex++) {
         if (task.result.artifacts[aindex].metadata_file != null) {
-          const metadata = JSON.parse(
-            fs.readFileSync(
-              directory + "/" + task.result.artifacts[aindex].metadata_file
-            )
-          );
-          task.result.artifacts[aindex].metadata = metadata;
+          try {
+            const metadata = JSON.parse(
+              fs.readFileSync(
+                directory + "/" + task.result.artifacts[aindex].metadata_file
+              )
+            );
+            task.result.artifacts[aindex].metadata = metadata;
+          } catch (e) {
+            logger.error(
+              "Error reading metadata json file: " +
+                directory +
+                "/" +
+                task.result.artifacts[aindex].metadata_file +
+                " " +
+                e
+            );
+          }
         }
 
         if (task.result.artifacts[aindex].contents_file != null) {
-          const contents = JSON.parse(
-            fs.readFileSync(
-              directory + "/" + task.result.artifacts[aindex].contents_file
-            )
-          );
-          task.result.artifacts[aindex].contents = contents;
+          try {
+            const contents = JSON.parse(
+              fs.readFileSync(
+                directory + "/" + task.result.artifacts[aindex].contents_file
+              )
+            );
+            task.result.artifacts[aindex].contents = contents;
+          } catch (e) {
+            logger.error(
+              "Error reading contents json file: " +
+                directory +
+                "/" +
+                task.result.artifacts[aindex].metadata_file +
+                " " +
+                e
+            );
+          }
         }
       }
     }
