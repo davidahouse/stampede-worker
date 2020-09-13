@@ -326,7 +326,7 @@ async function handleTask(task, responseQueue) {
               "Error reading contents json file: " +
                 directory +
                 "/" +
-                task.result.artifacts[aindex].metadata_file +
+                task.result.artifacts[aindex].contents_file +
                 " " +
                 e
             );
