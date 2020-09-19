@@ -12,6 +12,10 @@
   "bin": {
     "stampede-worker": "bin/stampede-worker.js"
   },
+  "engines": {
+    "node": ">=10.0.0",
+    "npm": ">6.0.0"
+  },
   "author": "David House",
   "license": "MIT",
   "dependencies": {
