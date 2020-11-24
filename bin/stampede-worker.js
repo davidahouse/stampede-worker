@@ -40,6 +40,7 @@ const conf = require("rc")("stampede", {
   shell: "/bin/bash",
   gitClone: "https",
   gitCloneOptions: "",
+  defaultGitCloneDepth: 15,
   gitMerge: false,
   stdoutLogFile: "stdout.log",
   stderrLogFile: null,
@@ -293,7 +294,10 @@ async function handleTask(task, responseQueue) {
     // Load any metadata pointed to by an artifact
     if (task.result.artifacts != null) {
       for (let aindex = 0; aindex < task.result.artifacts.length; aindex++) {
-        if (task.result.artifacts[aindex].metadata_file != null) {
+        if (
+          task.result.artifacts[aindex].metadata_file != null &&
+          task.result.artifacts[aindex].metadata_file != ""
+        ) {
           try {
             const metadata = JSON.parse(
               fs.readFileSync(
@@ -313,7 +317,10 @@ async function handleTask(task, responseQueue) {
           }
         }
 
-        if (task.result.artifacts[aindex].contents_file != null) {
+        if (
+          task.result.artifacts[aindex].contents_file != null &&
+          task.result.artifacts[aindex].contents_file != ""
+        ) {
           try {
             const contents = JSON.parse(
               fs.readFileSync(
