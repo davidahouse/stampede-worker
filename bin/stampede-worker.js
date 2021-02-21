@@ -46,6 +46,7 @@ const conf = require("rc")("stampede", {
   stderrLogFile: null,
   taskTimeout: 1800000, // Default timeout: 30 minutes
   artifactListFile: "artifacts.csv",
+  summaryTableFile: "summarytable.json",
   // Log file configuration
   taskDetailsLogFile: "worker.log",
   releaseBodyFile: "releasebody.txt",
@@ -472,6 +473,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
                 "",
                 taskExecutionConfig.errorTextFile,
                 taskExecutionConfig.artifactListFile,
+                taskExecutionConfig.summaryTableFile,
                 resolve
               );
             } else {
@@ -485,6 +487,7 @@ async function executeTask(taskExecutionConfig, workingDirectory, environment) {
                 "",
                 taskExecutionConfig.successTextFile,
                 taskExecutionConfig.artifactListFile,
+                taskExecutionConfig.summaryTableFile,
                 resolve
               );
             }
@@ -686,6 +689,7 @@ async function updateTask(task, responseQueue) {
  * @param {*} defaultText
  * @param {*} textFile
  * @param {*} artifactListFile
+ * @param {*} summaryTableFile
  * @return {*} The conclusion object to set in our task details
  */
 async function prepareConclusion(
@@ -697,6 +701,7 @@ async function prepareConclusion(
   defaultText,
   textFile,
   artifactListFile,
+  summaryTableFile,
   resolve
 ) {
   let summary = defaultSummary;
@@ -731,12 +736,27 @@ async function prepareConclusion(
     }
   }
 
+  let summaryTable = [];
+  if (summaryTableFile != null && summaryTableFile.length > 0) {
+    if (fs.existsSync(workingDirectory + "/" + summaryTableFile)) {
+      try {
+        const results = fs.readFileSync(
+          workingDirectory + "/" + summaryTableFile
+        );
+        summaryTable = JSON.parse(results);
+      } catch (e) {
+        console.log("Error reading summary table: " + e);
+      }
+    }
+  }
+
   resolve({
     conclusion: conclusion,
     title: title,
     summary: summary,
     text: text,
     artifacts: artifacts,
+    summaryTable: summaryTable,
   });
 }
 
