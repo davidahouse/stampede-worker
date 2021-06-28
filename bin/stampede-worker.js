@@ -614,9 +614,8 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
       task.buildID;
     environment[taskExecutionConfig.environmentVariablePrefix + "TASKID"] =
       task.taskID;
-    environment[
-      taskExecutionConfig.environmentVariablePrefix + "WORKINGDIR"
-    ] = workingDirectory;
+    environment[taskExecutionConfig.environmentVariablePrefix + "WORKINGDIR"] =
+      workingDirectory;
     environment[taskExecutionConfig.environmentVariablePrefix + "ACCESSTOKEN"] =
       task.scm.accessToken;
 
@@ -639,6 +638,11 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
       environment[
         taskExecutionConfig.environmentVariablePrefix + "GITSHAHEAD"
       ] = task.scm.pullRequest.head.sha;
+      if (task.scm.pullRequest.login != null) {
+        environment[
+          taskExecutionConfig.environmentVariablePrefix + "PULLREQUESTLOGIN"
+        ] = task.scm.pullRequest.login;
+      }
     }
 
     if (task.scm.branch != null) {
