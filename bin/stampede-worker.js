@@ -53,6 +53,8 @@ const conf = require("rc")("stampede", {
   logQueuePath: null,
   // Heartbeat
   heartbeatInterval: 15000,
+  cloneRetryInterval: 1 * 60 * 1000,  // retry every minute must be specified in milliseconds
+  cloneRetryAttempts: 3 // retry 3 tiems
 });
 
 // Configure winston logging
