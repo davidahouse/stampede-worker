@@ -5,7 +5,7 @@ const figlet = require("figlet");
 const fs = require("fs");
 const { spawn } = require("child_process");
 const Queue = require("bull");
-const uuidv4 = require("uuid/v4");
+const { v4: uuidv4 } = require("uuid");
 const logFileReader = require("log-file-reader");
 const winston = require("winston");
 const csv = require("csv-parser");
@@ -17,7 +17,7 @@ const workingDirectory = require("../lib/workingDirectory");
 
 require("pkginfo")(module);
 
-const conf = require("rc")("stampede", {
+const conf = require("rc-house")("stampede", {
   // Required configuration
   redisHost: "localhost",
   redisPort: 6379,
@@ -53,8 +53,8 @@ const conf = require("rc")("stampede", {
   logQueuePath: null,
   // Heartbeat
   heartbeatInterval: 15000,
-  cloneRetryInterval: 1 * 60 * 1000,  // retry every minute must be specified in milliseconds
-  cloneRetryAttempts: 3 // retry 3 tiems
+  cloneRetryInterval: 1 * 60 * 1000, // retry every minute must be specified in milliseconds
+  cloneRetryAttempts: 3, // retry 3 tiems
 });
 
 // Configure winston logging
@@ -78,6 +78,8 @@ const redisConfig = {
     port: conf.redisPort,
     host: conf.redisHost,
     password: conf.redisPassword,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
   },
 };
 const workerID = uuidv4();
