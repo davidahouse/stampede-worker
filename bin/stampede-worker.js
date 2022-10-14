@@ -39,7 +39,7 @@ const conf = require("rc-house")("stampede", {
   environmentVariablePrefix: "STAMP_",
   shell: "/bin/bash",
   gitClone: "https",
-  gitCloneOptions: "--filter=tree:0",
+  gitCloneOptions: "",
   defaultGitCloneDepth: 15,
   gitMerge: false,
   stdoutLogFile: "stdout.log",
