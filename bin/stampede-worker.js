@@ -599,7 +599,7 @@ function collectEnvironment(taskExecutionConfig, workingDirectory) {
   logger.verbose(JSON.stringify(task.config, null, 2));
   if (task.config != null) {
     Object.keys(task.config).forEach(function (key) {
-      logger.verbose("key: " + key);
+      logger.verbose("task.config key: " + key);
       const envVar =
         taskExecutionConfig.environmentVariablePrefix + key.toUpperCase();
       environment[envVar] = task.config[key].value;
